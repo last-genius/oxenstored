@@ -2,19 +2,20 @@
 ; also for fallback mode either all files must be present or none
 ; hence the 2 separate rules here
 
-(rule
- (targets oxenstored.conf)
- (deps oxenstored.conf.in)
- (mode fallback)
- (action
-  (run ../../config.status --file=oxenstored.conf)))
+; Somehow autogenerate these files?
+;(rule
+ ;(targets oxenstored.conf)
+ ;(deps oxenstored.conf.in)
+ ;(mode fallback)
+ ;(action
+  ;(run ../../config.status --file=oxenstored.conf)))
 
-(rule
- (targets paths.ml)
- (deps paths.ml.in)
- (mode fallback)
- (action
-  (run ../../config.status --file=paths.ml)))
+;(rule
+ ;(targets paths.ml)
+ ;(deps paths.ml.in)
+ ;(mode fallback)
+ ;(action
+  ;(run ../../config.status --file=paths.ml)))
 
 (executable
  (modes native)
@@ -26,18 +27,19 @@
  (libraries unix xen.bus xen.mmap xen.ctrl xen.eventchn xenstubs))
 
 (install
- (package xenstored)
+ (package oxenstored)
  (section sbin)
  (files
   (xenstored.exe as oxenstored)))
 
-(install
- (package xen)
- (section etc)
- (files oxenstored.conf))
+; Get xen and libs from somewhere - xs-opam?
+;(install
+ ;(package xen)
+ ;(section etc)
+ ;(files oxenstored.conf))
 
 (library
- (c_names syslog_stubs select_stubs)
+ (foreign_stubs (language c) (names syslog_stubs select_stubs))
  (modules syslog)
  (name xenstubs)
  (wrapped false)

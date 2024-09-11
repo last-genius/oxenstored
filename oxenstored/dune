@@ -5,7 +5,7 @@
   (:standard \ syslog))
  (flags
   (:standard -w -52))
- (libraries unix xen-evtchn xenctrl xenctrl.xenbus xenstubs))
+ (libraries unix xenbus xen-evtchn xen-gnt syslog))
 
 (install
  (package oxenstored)
@@ -22,7 +22,7 @@
 (library
  (foreign_stubs (language c) (names syslog_stubs select_stubs))
  (modules syslog)
- (name xenstubs)
+ (name syslog)
  (wrapped false)
  (libraries unix)
  (no_dynlink))

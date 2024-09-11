@@ -14,6 +14,8 @@
  * GNU Lesser General Public License for more details.
  *)
 
+module Xeneventchn = Eventchn
+
 (**************** high level binding ****************)
 type t = {
   handle: Xeneventchn.handle;

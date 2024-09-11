@@ -402,13 +402,14 @@ let () =
 
   let store = Store.create () in
   let next_frequent_ops = ref 0. in
+  let gnttab = Gnt.Gnttab.interface_open () in
   let advance_next_frequent_ops () =
     next_frequent_ops := (Unix.gettimeofday () +. !Define.conflict_max_history_seconds)
   in
   let delay_next_frequent_ops_by duration =
     next_frequent_ops := !next_frequent_ops +. duration
   in
-  let domains_init eventchn = Domains.init eventchn advance_next_frequent_ops in
+  let domains_init eventchn = Domains.init eventchn gnttab advance_next_frequent_ops in
 
   let cons = Connections.create () in
 

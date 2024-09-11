@@ -50,6 +50,7 @@ let handle = Plugin.interface_open ()
 
 type domains = {
   eventchn : Event.t;
+  gnttab : Gnt.Gnttab.interface;
   table : (Plugin.domid, Domain.t) Hashtbl.t;
 
   (* N.B. the Queue module is not thread-safe but oxenstored is single-threaded. *)
@@ -70,8 +71,9 @@ type domains = {
   mutable n_penalised: int; (* Number of domains with less than maximum credit *)
 }
 
-let init eventchn on_first_conflict_pause = {
-  eventchn = eventchn;
+let init eventchn gnttab on_first_conflict_pause = {
+  eventchn;
+  gnttab;
   table = Hashtbl.create 10;
   doms_conflict_paused = Queue.create ();
   doms_with_conflict_penalty = Queue.create ();
@@ -151,7 +153,8 @@ let resume _doms _domid =
   ()
 
 let create doms ?local_port ~remote_port domid mfn =
-  let interface = Xenctrl.map_foreign_range xc domid (Xenmmap.getpagesize()) mfn in
+  let mapping = Gnt.(Gnttab.map_exn doms.gnttab { domid; ref = xenstore} true) in
+  let interface = Gnt.Gnttab.Local_mapping.to_pages doms.gnttab mapping in
   let dom = Domain.make ?local_port ~remote_port domid mfn interface doms.eventchn in
   Hashtbl.add doms.table domid dom;
   dom

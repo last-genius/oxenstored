@@ -1,0 +1,28 @@
+(executable
+ (modes native)
+ (name xenstored)
+ (modules
+  (:standard \ syslog))
+ (flags
+  (:standard -w -52))
+ (libraries unix xen-evtchn xenctrl xenctrl.xenbus xenstubs))
+
+(install
+ (package oxenstored)
+ (section sbin)
+ (files
+  (xenstored.exe as oxenstored)))
+
+; Get xen and libs from somewhere - xs-opam?
+;(install
+ ;(package xen)
+ ;(section etc)
+ ;(files oxenstored.conf))
+
+(library
+ (foreign_stubs (language c) (names syslog_stubs select_stubs))
+ (modules syslog)
+ (name xenstubs)
+ (wrapped false)
+ (libraries unix)
+ (no_dynlink))

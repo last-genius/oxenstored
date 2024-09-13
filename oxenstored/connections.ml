@@ -15,6 +15,8 @@
  * GNU Lesser General Public License for more details.
  *)
 
+module Xeneventchn = Eventchn
+
 let debug fmt = Logging.debug "connections" fmt
 
 type t = {

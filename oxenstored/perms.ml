@@ -46,9 +46,9 @@ struct
 
   type t =
     {
-      owner: Xenctrl.domid;
+      owner: int;
       other: permty;
-      acl: (Xenctrl.domid * permty) list;
+      acl: (int * permty) list;
     }
 
   let create owner other acl =
@@ -99,7 +99,7 @@ end
 module Connection =
 struct
 
-  type elt = Xenctrl.domid * (permty list)
+  type elt = int * (permty list)
   type t =
     { main: elt;
       target: elt option; }

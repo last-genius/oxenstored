@@ -24,7 +24,7 @@ let maxent = ref (1000)
 let maxsize = ref (2048)
 
 module Domid = struct
-  type t = Xenctrl.domid
+  type t = int
   let compare (a:t) (b:t) = compare a b
 end
 

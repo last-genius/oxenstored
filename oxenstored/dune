@@ -5,7 +5,7 @@
   (:standard \ syslog))
  (flags
   (:standard -w -52))
- (libraries unix xenbus xen-evtchn xen-gnt syslog))
+ (libraries unix xenbus xen-evtchn xengnt xenmmap syslog xsdglue))
 
 (install
  (package oxenstored)

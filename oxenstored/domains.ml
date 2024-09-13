@@ -18,8 +18,6 @@ let debug fmt = Logging.debug "domains" fmt
 let error fmt = Logging.error "domains" fmt
 let warn fmt  = Logging.warn  "domains" fmt
 
-let xc = Xenctrl.interface_open ()
-
 let load_plug fname =
   let fail_with fmt = Printf.ksprintf failwith fmt in
   let fname = Dynlink.adapt_filename fname in
@@ -43,8 +41,8 @@ let () =
   load_plug filepath
 
 module Plugin =
-  (val Plugin_interface_v1.get_plugin_v1 ()
-    : Plugin_interface_v1.Domain_getinfo_V1)
+  (val Xsdglue.Plugin_interface_v1.get_plugin_v1 ()
+    : Xsdglue.Plugin_interface_v1.Domain_getinfo_V1)
 
 let handle = Plugin.interface_open ()
 
@@ -154,6 +152,7 @@ let resume _doms _domid =
 
 let create doms ?local_port ~remote_port domid mfn =
   let mapping = Gnt.(Gnttab.map_exn doms.gnttab { domid; ref = xenstore} true) in
+  (*let interface = Gnt.Gnttab.Local_mapping.*)
   let interface = Gnt.Gnttab.Local_mapping.to_pages doms.gnttab mapping in
   let dom = Domain.make ?local_port ~remote_port domid mfn interface doms.eventchn in
   Hashtbl.add doms.table domid dom;

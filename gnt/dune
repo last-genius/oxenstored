@@ -1,0 +1,8 @@
+(library
+ (foreign_stubs
+  (language c)
+  (names gnttab_stubs))
+ (name xengnt)
+ (modules gnt)
+ (wrapped false)
+ (libraries unix xenmmap))

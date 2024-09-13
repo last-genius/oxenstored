@@ -37,14 +37,19 @@
 #include <caml/fail.h>
 
 #define _H(__h) ((xc_evtchn *)(__h))
+#define XENEVTCHN_NO_CLOEXEC (1 << 0)
 
 xc_evtchn *global_xce = NULL;
 
-CAMLprim value stub_evtchn_init(value unit)
+CAMLprim value stub_evtchn_init(value cloexec)
 {
-  CAMLparam1(unit);
+  CAMLparam1(cloexec);
+  unsigned int flags = XC_OPENFLAG_NON_REENTRANT;
+  if ( !Bool_val(cloexec) )
+    flags |= XENEVTCHN_NO_CLOEXEC;
+
   if (global_xce == NULL) {
-    global_xce = xc_evtchn_open(NULL, XC_OPENFLAG_NON_REENTRANT);
+    global_xce = xc_evtchn_open(NULL, flags);
   }
 
   if (global_xce == NULL)
@@ -116,7 +121,7 @@ CAMLprim value stub_evtchn_virq_dom_exc(value unit)
   CAMLparam1(unit);
   CAMLreturn(Val_int(VIRQ_DOM_EXC));
 }
- 
+
 CAMLprim value stub_evtchn_bind_virq(value xce, value virq)
 {
   CAMLparam2(xce, virq);
@@ -161,7 +166,7 @@ CAMLprim value stub_evtchn_pending(value xce)
 
   Store_field(generation, 0, Val_int(0));
   Store_field(generation, 1, Val_int(port));
-  
+
   CAMLreturn(generation);
 }
 

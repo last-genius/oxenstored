@@ -17,16 +17,16 @@
 
 type handle
 
-external init': unit -> handle = "stub_evtchn_init"
+external init': bool -> handle = "stub_evtchn_init"
 
 let singleton_eventchn = ref None
 let printed_error_already = ref false
 
-let init () = match !singleton_eventchn with
+let init ?(cloexec=true) () = match !singleton_eventchn with
   | Some e -> e
   | None ->
     try
-      let e = init' () in
+      let e = init' cloexec in
       singleton_eventchn := Some e;
       e
     with e ->

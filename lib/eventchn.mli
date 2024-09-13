@@ -29,9 +29,11 @@ val to_int: t -> int
 val of_int: int -> t
 (** [of_int n] is the [n]th event channel. *)
 
-val init: unit -> handle
-(** Return an initialised event channel interface. On error it
-    will throw a Failure exception. *)
+val init: ?cloexec:bool -> unit -> handle
+(** Return an initialised event channel interface.
+    The default is to close the underlying file descriptor on [execve],
+    which can be overriden with [~cloexec:false]. On error it will
+    throw a Failure exception. *)
 
 val close: handle -> int
 (** Close an event channel interface and return the status code. *)

@@ -21,7 +21,7 @@
 #include <errno.h>
 #include "mmap_stubs.h"
 
-#include <xen-tools/common-macros.h>
+#include <assert.h>
 
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
@@ -61,7 +61,7 @@ CAMLprim value stub_mmap_init(value fd, value pflag, value mflag,
 	default: caml_invalid_argument("maptype");
 	}
 
-	BUILD_BUG_ON((sizeof(struct mmap_interface) % sizeof(value)) != 0);
+	static_assert((sizeof(struct mmap_interface) % sizeof(value)) == 0);
 	result = caml_alloc(Wsize_bsize(sizeof(struct mmap_interface)),
 			    Abstract_tag);
 
@@ -79,46 +79,6 @@ CAMLprim value stub_mmap_final(value intf)
 	if (Intf_val(intf)->addr != MAP_FAILED)
 		munmap(Intf_val(intf)->addr, Intf_val(intf)->len);
 	Intf_val(intf)->addr = MAP_FAILED;
-
-	CAMLreturn(Val_unit);
-}
-
-CAMLprim value stub_mmap_read(value intf, value start, value len)
-{
-	CAMLparam3(intf, start, len);
-	CAMLlocal1(data);
-	int c_start;
-	int c_len;
-
-	c_start = Int_val(start);
-	c_len = Int_val(len);
-
-	if (c_start > Intf_val(intf)->len)
-		caml_invalid_argument("start invalid");
-	if (c_start + c_len > Intf_val(intf)->len)
-		caml_invalid_argument("len invalid");
-
-	data = caml_alloc_string(c_len);
-	memcpy((char *)String_val(data), Intf_val(intf)->addr + c_start, c_len);
-
-	CAMLreturn(data);
-}
-
-CAMLprim value stub_mmap_write(value intf, value data, value start)
-{
-	CAMLparam3(intf, data, start);
-	int c_start;
-	int c_len;
-
-	c_start = Int_val(start);
-	c_len = caml_string_length(data);
-
-	if (c_start > Intf_val(intf)->len)
-		caml_invalid_argument("start invalid");
-	if (c_start + c_len > Intf_val(intf)->len)
-		caml_invalid_argument("len invalid");
-
-	memcpy(Intf_val(intf)->addr + c_start, String_val(data), c_len);
 
 	CAMLreturn(Val_unit);
 }

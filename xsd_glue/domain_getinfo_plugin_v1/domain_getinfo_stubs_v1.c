@@ -13,10 +13,9 @@
 #include <caml/callback.h>
 #include <caml/custom.h>
 
-#include <xen-tools/common-macros.h>
 #include <xenctrl.h>
 
-#include "xen-caml-compat.h"
+#define MASK_EXTR(v, m) (((v) & (m)) / ((m) & -(m)))
 
 static inline xc_interface *xsd_glue_xch_of_val(value v)
 {

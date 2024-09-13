@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: LGPL-2.1-only WITH OCaml-LGPL-linking-exception *)
 (** Minimal interface on top of unstable Xenctrl for Oxenstored's usage *)
 
-module P = Plugin_interface_v1
+module P = Xsdglue.Plugin_interface_v1
 
 module M : P.Domain_getinfo_V1 = struct
   exception Error of string

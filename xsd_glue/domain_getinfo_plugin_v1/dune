@@ -1,0 +1,9 @@
+(library
+ (foreign_stubs
+  (language c)
+  (names domain_getinfo_stubs_v1)
+ )
+ (name domain_getinfo_plugin_v1)
+ (libraries xsdglue)
+ )
+

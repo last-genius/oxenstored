@@ -28,7 +28,8 @@ type t = {
 let init ?fd ?domexc_port () =
   let handle = match fd with
     | None -> Xeneventchn.init ~cloexec:false ()
-    | Some fd -> fd |> Utils.FD.of_int |> Xeneventchn.fdopen
+    (*| Some fd -> fd |> Utils.FD.of_int |> Xeneventchn.fdopen*)
+    | Some _ -> failwith "Not supported"
   in
   let domexc = match domexc_port with
     | None -> Xeneventchn.bind_dom_exc_virq handle

@@ -14,6 +14,7 @@
  * GNU Lesser General Public License for more details.
  *)
 
+module Xeneventchn = Eventchn
 open Printf
 
 let debug fmt = Logging.debug "domain" fmt
@@ -39,9 +40,9 @@ let string_of_port_pair p =
 
 type t =
   {
-    id: Xenctrl.domid;
+    id: int;
     mfn: nativeint;
-    interface: Xenmmap.mmap_interface;
+    interface: Xenmmap.t;
     eventchn: Event.t;
     mutable ports: port_pair;
     mutable bad_client: bool;

@@ -15,13 +15,24 @@
  *)
 
 type mmap_interface
+type t = mmap_interface * (mmap_interface -> unit)
 
 type mmap_prot_flag = RDONLY | WRONLY | RDWR
 type mmap_map_flag = SHARED | PRIVATE
 
 (* mmap: fd -> prot_flag -> map_flag -> length -> offset -> interface *)
-external mmap: Unix.file_descr -> mmap_prot_flag -> mmap_map_flag
+external mmap': Unix.file_descr -> mmap_prot_flag -> mmap_map_flag
   -> int -> int -> mmap_interface = "stub_mmap_init"
-external unmap: mmap_interface -> unit = "stub_mmap_final"
+external unmap': mmap_interface -> unit = "stub_mmap_final"
+
+(* getpagesize: unit -> size of page *)
+let make ?(unmap=unmap') interface = interface, unmap
+
 (* getpagesize: unit -> size of page *)
 external getpagesize: unit -> int = "stub_mmap_getpagesize"
+
+let to_interface (intf, _) = intf
+let mmap fd prot_flag map_flag length offset =
+	let map = mmap' fd prot_flag map_flag length offset in
+	make map ~unmap:unmap'
+let unmap (map, do_unmap) = do_unmap map

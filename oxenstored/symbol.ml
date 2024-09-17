@@ -14,17 +14,20 @@
  * GNU Lesser General Public License for more details.
  *)
 
-module WeakTable = Weak.Make(struct
-    type t = string
-    let equal (x:string) (y:string) = (x = y)
-    let hash = Hashtbl.hash
-  end)
+module WeakTable = Weak.Make (struct
+  type t = string
+
+  let equal (x : string) (y : string) = x = y
+
+  let hash = Hashtbl.hash
+end)
 
 type t = string
 
 let tbl = WeakTable.create 1024
 
 let of_string s = WeakTable.merge tbl s
+
 let to_string s = s
 
 let equal a b =
@@ -37,4 +40,4 @@ let compare a b = String.compare b a
 
 let stats () =
   let len, entries, _, _, _, _ = WeakTable.stats tbl in
-  len, entries
+  (len, entries)

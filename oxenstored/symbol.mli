@@ -20,8 +20,8 @@
     manipulate them through the use of small identifiers that we call symbols. These symbols can be
     compared in constant time (as opposite to strings) and should help the ocaml GC. *)
 
-type t
 (** The type of symbols. *)
+type t
 
 val of_string : string -> t
 (** Convert a string into a symbol. *)
@@ -29,14 +29,13 @@ val of_string : string -> t
 val to_string : t -> string
 (** Convert a symbol into a string. *)
 
-val equal: t -> t -> bool
+val equal : t -> t -> bool
 (** Compare two symbols for equality *)
 
-val compare: t -> t -> int
+val compare : t -> t -> int
 (** Compare two symbols *)
 
 (** {6 Statistics } *)
 
 val stats : unit -> int * int
 (** Get the table size and number of entries. *)
-

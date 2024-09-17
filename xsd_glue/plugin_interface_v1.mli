@@ -18,21 +18,27 @@ module type Domain_getinfo_V1 = sig
   exception Error of string
 
   type domid = int
+
   type handle
 
   type domaininfo = {
-    domid : domid;
-    dying : bool;
-    shutdown : bool;
-    shutdown_code : int;
+      domid: domid
+    ; dying: bool
+    ; shutdown: bool
+    ; shutdown_code: int
   }
 
   val interface_open : unit -> handle
+
   val domain_getinfo : handle -> domid -> domaininfo
+
   val domain_getinfolist : handle -> domaininfo array
 end
 
 val register_logging_function : (string -> unit) -> unit
+
 val logging_function : (string -> unit) ref
+
 val register_plugin_v1 : (module Domain_getinfo_V1) -> unit
+
 val get_plugin_v1 : unit -> (module Domain_getinfo_V1)

@@ -12,8 +12,10 @@
  * GNU Lesser General Public License for more details.
  *)
 
-
-(** Same interface and semantics as [Unix.select], implemented using poll(3). *)
-val poll_select:
-  Unix.file_descr list -> Unix.file_descr list -> Unix.file_descr list -> float
+val poll_select :
+     Unix.file_descr list
+  -> Unix.file_descr list
+  -> Unix.file_descr list
+  -> float
   -> Unix.file_descr list * Unix.file_descr list * Unix.file_descr list
+(** Same interface and semantics as [Unix.select], implemented using poll(3). *)

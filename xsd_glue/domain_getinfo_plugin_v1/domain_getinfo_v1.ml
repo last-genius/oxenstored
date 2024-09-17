@@ -7,13 +7,14 @@ module M : P.Domain_getinfo_V1 = struct
   exception Error of string
 
   type domid = int
+
   type handle
 
   type domaininfo = {
-    domid : domid;
-    dying : bool;
-    shutdown : bool;
-    shutdown_code : int;
+      domid: domid
+    ; dying: bool
+    ; shutdown: bool
+    ; shutdown_code: int
   }
 
   external interface_open : unit -> handle = "stub_xsd_glue_xc_interface_open"
@@ -29,7 +30,7 @@ end
 
 let () =
   Printf.ksprintf !P.logging_function "Registration of %s plugin started\n%!"
-    __MODULE__;
-  P.register_plugin_v1 (module M : P.Domain_getinfo_V1);
+    __MODULE__ ;
+  P.register_plugin_v1 (module M : P.Domain_getinfo_V1) ;
   Printf.ksprintf !P.logging_function "Registration of %s plugin successful\n%!"
     __MODULE__

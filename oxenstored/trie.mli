@@ -15,10 +15,10 @@
 
 (** Basic Implementation of polymorphic tries (ie. prefix trees) *)
 
-type 'a t
 (** The type of tries. ['a] the type of values.
     	Internally, a trie is represented as a labeled tree, where node contains values
     	of type [string * 'a option]. *)
+type 'a t
 
 val create : unit -> 'a t
 (** Creates an empty trie. *)

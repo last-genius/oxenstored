@@ -13,8 +13,9 @@
  *)
 
 type level = Emerg | Alert | Crit | Err | Warning | Notice | Info | Debug
+
 type facility =
-    Auth
+  | Auth
   | Authpriv
   | Cron
   | Daemon
@@ -36,6 +37,5 @@ type facility =
   | Uucp
 
 external log : facility -> level -> string -> unit = "stub_syslog"
-
 
 val facility_of_string : string -> facility

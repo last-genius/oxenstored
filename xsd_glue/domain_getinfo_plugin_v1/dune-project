@@ -1,0 +1,7 @@
+(lang dune 3.15)
+(using dune_site 0.1)
+
+(generate_opam_files true)
+
+(package
+  (name domain_getinfo_plugin_v1))

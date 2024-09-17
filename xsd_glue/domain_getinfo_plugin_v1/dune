@@ -1,9 +1,13 @@
 (library
+ (name domain_getinfo_plugin_v1)
+ (public_name domain_getinfo_plugin_v1)
  (foreign_stubs
   (language c)
-  (names domain_getinfo_stubs_v1)
- )
- (name domain_getinfo_plugin_v1)
- (libraries xsdglue)
- )
+  (names domain_getinfo_stubs_v1))
+ (libraries oxenstored.xsdglue))
 
+(plugin
+ (name domain_getinfo_plugin_v1)
+ (libraries domain_getinfo_plugin_v1)
+ (site
+  (oxenstored plugins)))

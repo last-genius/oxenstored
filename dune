@@ -27,3 +27,7 @@
   ;(modules configure)
   ;(name configure)
   ;(libraries dune-configurator))
+
+(env
+  (dev
+    (flags (:standard -warn-error -34-69))))

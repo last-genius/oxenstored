@@ -1,4 +1,5 @@
 (library
  (name xsdglue)
+ (public_name oxenstored.xsdglue)
  )
 

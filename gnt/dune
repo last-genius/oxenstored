@@ -1,7 +1,9 @@
 (library
  (foreign_stubs
   (language c)
-  (names gnttab_stubs))
+  (names gnttab_stubs)
+ )
+ (c_library_flags -lxengnttab)
  (name xengnt)
  (modules gnt)
  (wrapped false)

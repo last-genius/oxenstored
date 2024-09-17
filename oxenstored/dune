@@ -5,19 +5,19 @@
   (:standard \ syslog))
  (flags
   (:standard -w -52))
- (libraries unix xenbus xen-evtchn xengnt xenmmap syslog xsdglue))
+ (libraries unix xenbus xen-evtchn xen-evtchn-unix
+            xengnt xenmmap syslog xsdglue
+            dune-site dune-site.plugins))
+
+(generate_sites_module
+(module sites)
+(plugins (oxenstored plugins)))
 
 (install
  (package oxenstored)
  (section sbin)
  (files
   (xenstored.exe as oxenstored)))
-
-; Get xen and libs from somewhere - xs-opam?
-;(install
- ;(package xen)
- ;(section etc)
- ;(files oxenstored.conf))
 
 (library
  (foreign_stubs (language c) (names syslog_stubs select_stubs))

@@ -19,6 +19,17 @@
  (files
   (xenstored.exe as oxenstored)))
 
+(executable
+  (modules configure)
+  (name configure))
+
+(rule
+ (targets paths.ml)
+ (deps paths.ml.in configure.exe)
+ (action
+ (with-stdout-to paths.ml
+                 (run ./configure))))
+
 (library
  (foreign_stubs (language c) (names syslog_stubs select_stubs))
  (modules syslog)

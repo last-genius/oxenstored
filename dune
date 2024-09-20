@@ -10,23 +10,11 @@
  ;(action
   ;(run ../../config.status --file=oxenstored.conf)))
 
-;(rule
- ;(targets paths.ml)
- ;(deps paths.ml.in)
- ;(mode fallback)
- ;(action
-  ;(run ../../config.status --file=paths.ml)))
-
 ; Get xen and libs from somewhere - xs-opam?
 ;(install
  ;(package xen)
  ;(section etc)
  ;(files oxenstored.conf))
-
-;(executable
-  ;(modules configure)
-  ;(name configure)
-  ;(libraries dune-configurator))
 
 (env
   (dev

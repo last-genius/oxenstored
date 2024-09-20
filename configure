@@ -1,4 +1,0 @@
-#!/bin/sh
-
-exec dune exec --profile=release ./configure.exe conf -- $* >oxenstored.conf
-exec dune exec --profile=release ./configure.exe paths -- $* >paths.ml

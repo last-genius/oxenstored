@@ -1,0 +1,34 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+concurrency: # On new push, cancel old workflows from the same PR, branch or tag:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ocaml-build:
+    name: Build Oxenstored
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install xen headers
+        run: sudo apt-get install -y libxen-dev
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup environment
+        uses: ./.github/workflows/setup-env
+
+      - name: Build
+        run: opam exec -- make
+
+      #- name: Check all code
+        #run: opam exec -- make check
+
+      - name: Trim dune cache
+        run: opam exec -- dune cache trim --size=2GiB

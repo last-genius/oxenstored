@@ -2,7 +2,7 @@
  (modes native)
  (name xenstored)
  (modules
-  (:standard \ syslog))
+  (:standard \ syslog configure))
  (flags
   (:standard -w -52))
  (libraries unix xenbus xen-evtchn xen-evtchn-unix

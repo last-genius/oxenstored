@@ -1,3 +1,0 @@
-[submodule "ocaml-evtchn"]
-	path = ocaml-evtchn
-	url = https://github.com/last-genius/ocaml-evtchn

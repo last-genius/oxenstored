@@ -1,0 +1,11 @@
+(executables
+ (names main)
+ (libraries xen-evtchn xen-evtchn-unix ounit2 lwt.unix))
+
+(alias
+ (name runtest)
+ (package xen-evtchn-unix)
+ (deps
+  (:< main.exe))
+ (action
+  (run %{<})))

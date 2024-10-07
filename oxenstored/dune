@@ -5,7 +5,7 @@
   (:standard \ syslog configure))
  (flags
   (:standard -w -52))
- (libraries unix xenbus xen-evtchn xen-evtchn-unix
+ (libraries unix xenbus xen-evtchn xen-evtchn-unix-minimal
             xengnt xenmmap syslog xsdglue
             dune-site dune-site.plugins))
 

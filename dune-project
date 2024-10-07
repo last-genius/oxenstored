@@ -27,6 +27,6 @@
 (package
  (name oxenstored)
  (synopsis "Oxenstored")
- (depends dune-site lwt lwt-dllist ounit2)
+ (depends dune-site ounit2)
  (sites
   (lib plugins)))

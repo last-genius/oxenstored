@@ -1,5 +1,6 @@
 (library
  (name xsd_glue)
  (public_name oxenstored.xsdglue)
+ (wrapped false)
  )
 

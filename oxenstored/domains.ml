@@ -45,8 +45,8 @@ let () =
   load_plug filepath
 
 module Plugin =
-  ( val Xsdglue.Plugin_interface_v1.get_plugin_v1 ()
-      : Xsdglue.Plugin_interface_v1.Domain_getinfo_V1
+  ( val Plugin_interface_v1.get_plugin_v1 ()
+      : Plugin_interface_v1.Domain_getinfo_V1
     )
 
 let handle = Plugin.interface_open ()

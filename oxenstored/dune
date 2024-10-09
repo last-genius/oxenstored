@@ -6,7 +6,7 @@
  (flags
   (:standard -w -52))
  (libraries unix xenbus xen-evtchn xen-evtchn-unix-minimal
-            xengnt xenmmap syslog xsdglue
+            xengnt xenmmap syslog xsd_glue
             dune-site dune-site.plugins))
 
 (generate_sites_module

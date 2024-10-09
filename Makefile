@@ -1,16 +1,14 @@
-#
-# This Makefile is not called from Opam but only used for
-# convenience during development
-#
-
 DUNE 	= dune
 JOBS    = $(shell getconf _NPROCESSORS_ONLN)
 PROFILE = release
 
-.PHONY: build check test clean format
+.PHONY: build check test clean format install
 
 build:
 	$(DUNE) build -j $(JOBS) --profile=$(PROFILE)
+
+install: build
+	$(DUNE) install oxenstored
 
 check:
 	dune build @check -j $(JOBS)
@@ -30,5 +28,3 @@ utop:
 format:
 	$(DUNE) build --auto-promote @fmt
 	dune format-dune-file dune-project > $$$$ && mv $$$$ dune-project
-
-# vim:ts=8:noet:

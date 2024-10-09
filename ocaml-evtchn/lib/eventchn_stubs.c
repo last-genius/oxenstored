@@ -44,7 +44,7 @@ xc_evtchn *global_xce = NULL;
 CAMLprim value stub_evtchn_init(value cloexec)
 {
   CAMLparam1(cloexec);
-  unsigned int flags = XC_OPENFLAG_NON_REENTRANT;
+  unsigned int flags = 0;
   if ( !Bool_val(cloexec) )
     flags |= XENEVTCHN_NO_CLOEXEC;
 

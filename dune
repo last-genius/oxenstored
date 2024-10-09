@@ -16,6 +16,8 @@
  ;(section etc)
  ;(files oxenstored.conf))
 
+(vendored_dirs ocaml-evtchn)
+
 (env
   (dev
     (flags (:standard -warn-error -34-69))))

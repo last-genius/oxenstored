@@ -1,2 +1,56 @@
-(lang dune 1.0)
+(lang dune 3.15)
 (name xen-evtchn)
+
+(generate_opam_files true)
+
+(maintainers "dave@recoil.org")
+(homepage "https://github.com/mirage/ocaml-evtchn")
+(source (github mirage/ocaml-evtchn))
+
+(package
+ (name xen-evtchn)
+ (authors "Vincent Hanquez" "Anil Madhavapeddy" "David Scott" "Jonathan Ludlam")
+ (tags ("org:mirage" "org:xapi-project"))
+ (synopsis "Xen event channel interface for MirageOS")
+ (description "
+Event channels are the Xen equivalent of interrupts, used to signal
+when data (or space) is available for processing. There are 2 distinct
+implementations:
+
+  1. a Xen shared-memory + hypercall protocol for kernelspace
+  2. a binding to a set of libxc functions which access /dev/xen/evtchn
+     for userspace (see `xen-evtchn-unix` opam package)."
+ )
+ (depends
+  (ocaml (>= 4.03.0))
+  dune
+  lwt
+  lwt-dllist
+  cmdliner
+  )
+ )
+
+(package
+ (name xen-evtchn-unix)
+ (authors "Vincent Hanquez" "Anil Madhavapeddy" "David Scott" "Jonathan Ludlam")
+ (tags ("org:mirage" "org:xapi-project"))
+ (synopsis "Xen event channel interface for Linux")
+ (depends
+   (ocaml (>= 4.03.0))
+   dune
+   (xen-evtchn (>= 2.0.0))
+   lwt-dllist
+   lwt
+   cmdliner
+   (ounit2 :with-test)
+   (conf-xen :build)
+ ))
+
+(package
+ (name xen-evtchn-unix-minimal)
+ (tags ("org:mirage" "org:xapi-project"))
+ (synopsis "Xen event channel interface for Linux, without Lwt dependencies")
+ (depends
+   dune
+   (xen-evtchn (>= 2.0.0))
+ ))

@@ -24,6 +24,7 @@
    wraps. Arguably if you have failed to notice 2bn (32-bit) wakeups then
    you have bigger problems. *)
 
+include Unix_activations_minimal
 open Lwt.Infix
 
 let nr_events = 1024
@@ -36,9 +37,6 @@ type port = {
   mutable counter: event;
   c: unit Lwt_condition.t;
 }
-
-external fd: Eventchn.handle -> Unix.file_descr = "stub_evtchn_fd"
-external pending: Eventchn.handle -> Eventchn.t = "stub_evtchn_pending"
 
 let ports = Array.init nr_events (fun _ -> { counter = program_start; c = Lwt_condition.create () })
 

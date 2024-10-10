@@ -28,3 +28,4 @@ utop:
 format:
 	$(DUNE) build --auto-promote @fmt
 	dune format-dune-file dune-project > $$$$ && mv $$$$ dune-project
+	git ls-files '**/*.[ch]' | xargs -n1 indent -nut -i8

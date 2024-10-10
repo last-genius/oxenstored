@@ -1,0 +1,43 @@
+name: Check format
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ocaml-format:
+    name: Ocaml files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Pull configuration from xs-opam
+        run: |
+          curl --fail --silent https://raw.githubusercontent.com/xapi-project/xs-opam/master/tools/xs-opam-ci.env | cut -f2 -d " " > .env
+
+      - name: Load environment file
+        id: dotenv
+        uses: falti/dotenv-action@v1
+
+      - name: Update Ubuntu repositories
+        run: sudo apt-get update
+
+      - name: Use ocaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ steps.dotenv.outputs.ocaml_version_full }}
+          opam-repositories: |
+            xs-opam: ${{ steps.dotenv.outputs.repository }}
+          dune-cache: true
+          opam-pin: false
+
+      - name: Install ocamlformat
+        run: opam install ocamlformat
+
+      - name: Check whether `make format` was run
+        run: opam exec -- dune build @fmt
+
+      - name: Check whether dune files are formatted
+        run: opam exec -- dune format-dune-file dune-project > $$$$ && mv $$$$ dune-project

@@ -34,70 +34,90 @@
 #define Intf_val(a) ((struct mmap_interface *)Data_abstract_val(a))
 #define Wsize_bsize_round(n) (Wsize_bsize( (n) + sizeof(value) - 1 ))
 
-value stub_mmap_alloc(void *addr, size_t len)
+value
+stub_mmap_alloc (void *addr, size_t len)
 {
-	CAMLparam0();
-	CAMLlocal1(result);
-	result = caml_alloc(Wsize_bsize_round(sizeof(struct mmap_interface)), Abstract_tag);
-	Intf_val(result)->addr = addr;
-	Intf_val(result)->len = len;
-	CAMLreturn(result);
+        CAMLparam0 ();
+        CAMLlocal1 (result);
+        result = caml_alloc (Wsize_bsize_round
+                             (sizeof (struct mmap_interface)), Abstract_tag);
+        Intf_val (result)->addr = addr;
+        Intf_val (result)->len = len;
+        CAMLreturn (result);
 }
 
-CAMLprim value stub_mmap_init(value fd, value pflag, value mflag,
-                              value len, value offset)
+CAMLprim value
+stub_mmap_init (value fd, value pflag, value mflag, value len, value offset)
 {
-	CAMLparam5(fd, pflag, mflag, len, offset);
-	CAMLlocal1(result);
-	int c_pflag, c_mflag;
-	void* addr;
-	size_t length;
+        CAMLparam5 (fd, pflag, mflag, len, offset);
+        CAMLlocal1 (result);
+        int c_pflag, c_mflag;
+        void *addr;
+        size_t length;
 
-	switch (Int_val(pflag)) {
-	case 0: c_pflag = PROT_READ; break;
-	case 1: c_pflag = PROT_WRITE; break;
-	case 2: c_pflag = PROT_READ|PROT_WRITE; break;
-	default: caml_invalid_argument("protectiontype");
-	}
+        switch (Int_val (pflag))
+          {
+          case 0:
+                  c_pflag = PROT_READ;
+                  break;
+          case 1:
+                  c_pflag = PROT_WRITE;
+                  break;
+          case 2:
+                  c_pflag = PROT_READ | PROT_WRITE;
+                  break;
+          default:
+                  caml_invalid_argument ("protectiontype");
+          }
 
-	switch (Int_val(mflag)) {
-	case 0: c_mflag = MAP_SHARED; break;
-	case 1: c_mflag = MAP_PRIVATE; break;
-	default: caml_invalid_argument("maptype");
-	}
+        switch (Int_val (mflag))
+          {
+          case 0:
+                  c_mflag = MAP_SHARED;
+                  break;
+          case 1:
+                  c_mflag = MAP_PRIVATE;
+                  break;
+          default:
+                  caml_invalid_argument ("maptype");
+          }
 
-	static_assert((sizeof(struct mmap_interface) % sizeof(value)) == 0);
+        static_assert ((sizeof (struct mmap_interface) % sizeof (value)) ==
+                       0);
 
-	if (Int_val(len) < 0)
-		caml_invalid_argument("negative size");
-	if (Int_val(offset) < 0)
-		caml_invalid_argument("negative offset");
-	length = Int_val(len);
+        if (Int_val (len) < 0)
+                caml_invalid_argument ("negative size");
+        if (Int_val (offset) < 0)
+                caml_invalid_argument ("negative offset");
+        length = Int_val (len);
 
-	addr = mmap(NULL, length, c_pflag, c_mflag, Int_val(fd), Int_val(offset));
-	if (MAP_FAILED == addr)
-		uerror("mmap", Nothing);
+        addr = mmap (NULL, length, c_pflag, c_mflag, Int_val (fd),
+                     Int_val (offset));
+        if (MAP_FAILED == addr)
+                uerror ("mmap", Nothing);
 
-	result = stub_mmap_alloc(addr, length);
-	CAMLreturn(result);
+        result = stub_mmap_alloc (addr, length);
+        CAMLreturn (result);
 }
 
-CAMLprim value stub_mmap_final(value intf)
+CAMLprim value
+stub_mmap_final (value intf)
 {
-	CAMLparam1(intf);
+        CAMLparam1 (intf);
 
-	if (Intf_val(intf)->addr != MAP_FAILED)
-		munmap(Intf_val(intf)->addr, Intf_val(intf)->len);
-	Intf_val(intf)->addr = MAP_FAILED;
+        if (Intf_val (intf)->addr != MAP_FAILED)
+                munmap (Intf_val (intf)->addr, Intf_val (intf)->len);
+        Intf_val (intf)->addr = MAP_FAILED;
 
-	CAMLreturn(Val_unit);
+        CAMLreturn (Val_unit);
 }
 
-CAMLprim value stub_mmap_getpagesize(value unit)
+CAMLprim value
+stub_mmap_getpagesize (value unit)
 {
-	CAMLparam1(unit);
-	CAMLlocal1(data);
+        CAMLparam1 (unit);
+        CAMLlocal1 (data);
 
-	data = Val_int(getpagesize());
-	CAMLreturn(data);
+        data = Val_int (getpagesize ());
+        CAMLreturn (data);
 }

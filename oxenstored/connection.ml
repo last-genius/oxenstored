@@ -185,9 +185,9 @@ let anon_id_next = ref 1
 let get_domstr con =
   match con.dom with
   | None ->
-      "A" ^ string_of_int con.anonid
+      Printf.sprintf "DOM0 (ANON CONN #%d)" con.anonid
   | Some dom ->
-      "D" ^ string_of_int (Domain.get_id dom)
+      Printf.sprintf "DOM%d" (Domain.get_id dom)
 
 let make_perm dom =
   let domid = match dom with None -> 0 | Some d -> Domain.get_id d in

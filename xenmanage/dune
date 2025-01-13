@@ -1,0 +1,6 @@
+(library
+ (name xenmanage)
+ (public_name xenmanage)
+ (foreign_stubs
+  (language c)
+  (names xenmanage_stubs)))

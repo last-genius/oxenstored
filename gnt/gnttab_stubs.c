@@ -73,16 +73,26 @@ stub_gnttab_unmap (value xgh, value array)
 {
         CAMLparam2 (xgh, array);
         int result;
+	xengnttab_handle* xgt = _G(xgh);
+	void* start_address = _M(array)->addr;
+	uint32_t count = _M(array)->len >> XEN_PAGE_SHIFT;
+	char s[64];
 
-        caml_enter_blocking_section ();
-        result = xengnttab_unmap (_G (xgh), _M (array)->addr,
-                                  _M (array)->len >> XEN_PAGE_SHIFT);
-        caml_leave_blocking_section ();
+	/* Check if this grant hasn't already been unmapped before */
+	if (start_address) {
+		caml_enter_blocking_section ();
+		result = xengnttab_unmap (xgt, start_address, count);
+		caml_leave_blocking_section ();
+		/* Avoid double unmapping by NULL-ing the pointer */
+		_M(array)->addr = NULL;
+		_M(array)->len = 0;
 
-        if (result != 0)
-          {
-                  caml_failwith ("Failed to unmap grant");
-          }
+		if (result != 0)
+		{
+			  int r = snprintf(s, 64, "Failed to unmap grant (errno %d, rc %d)", errno, result);
+			  caml_failwith(s);
+		}
+	}
 
         CAMLreturn (Val_unit);
 }
@@ -94,12 +104,13 @@ stub_gnttab_map_fresh (value xgh,
         CAMLparam4 (xgh, reference, domid, writable);
         CAMLlocal1 (contents);
         void *map;
+	xengnttab_handle* xgt = _G(xgh);
+	uint32_t domid_c = Int_val(domid);
+	uint32_t ref = Int_val(reference);
+	int prot = Bool_val (writable) ? PROT_READ | PROT_WRITE : PROT_READ;
 
         caml_enter_blocking_section ();
-        map = xengnttab_map_grant_ref (_G (xgh), Int_val (domid),
-                                       Int_val (reference),
-                                       Bool_val (writable) ? PROT_READ |
-                                       PROT_WRITE : PROT_READ);
+        map = xengnttab_map_grant_ref (xgt, domid_c, ref, prot);
         caml_leave_blocking_section ();
 
         if (map == NULL)

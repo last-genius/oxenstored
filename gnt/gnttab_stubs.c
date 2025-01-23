@@ -104,12 +104,13 @@ stub_gnttab_map_fresh (value xgh,
         CAMLparam4 (xgh, reference, domid, writable);
         CAMLlocal1 (contents);
         void *map;
+	xengnttab_handle* xgt = _G(xgh);
+	uint32_t domid_c = Int_val(domid);
+	uint32_t ref = Int_val(reference);
+	int prot = Bool_val (writable) ? PROT_READ | PROT_WRITE : PROT_READ;
 
         caml_enter_blocking_section ();
-        map = xengnttab_map_grant_ref (_G (xgh), Int_val (domid),
-                                       Int_val (reference),
-                                       Bool_val (writable) ? PROT_READ |
-                                       PROT_WRITE : PROT_READ);
+        map = xengnttab_map_grant_ref (xgt, domid_c, ref, prot);
         caml_leave_blocking_section ();
 
         if (map == NULL)

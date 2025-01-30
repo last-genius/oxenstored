@@ -106,13 +106,15 @@ let del_watches_of_con con watches =
   | ws ->
       Some ws
 
-let del_watches cons con =
-  Connection.del_watches con ;
-  cons.watches <- Trie.map (del_watches_of_con con) cons.watches ;
-  cons.has_pending_watchevents <-
-    (cons.has_pending_watchevents
-    |> Connection.Watch.Set.filter @@ fun w -> Connection.get_con w != con
-    )
+let del_watches cons (con : Connection.t) =
+  if con.nb_watches > 0 then (
+    Connection.del_watches con ;
+    cons.watches <- Trie.map (del_watches_of_con con) cons.watches ;
+    cons.has_pending_watchevents <-
+      (cons.has_pending_watchevents
+      |> Connection.Watch.Set.filter @@ fun w -> Connection.get_con w != con
+      )
+  )
 
 let del_anonymous cons con spec_fds =
   try

@@ -658,14 +658,14 @@ let () =
   let period_ops_interval = 15. in
   let period_start = ref 0. in
 
+  let is_peaceful c =
+    match Connection.get_domain c with
+    | None ->
+        true (* Treat socket-connections as exempt, and free to conflict. *)
+    | Some dom ->
+        not (Domain.is_paused_for_conflict dom)
+  in
   let main_loop () =
-    let is_peaceful c =
-      match Connection.get_domain c with
-      | None ->
-          true (* Treat socket-connections as exempt, and free to conflict. *)
-      | Some dom ->
-          not (Domain.is_paused_for_conflict dom)
-    in
     frequent_ops () ;
     let mw = Connections.has_more_work cons in
     let peaceful_mw = List.filter is_peaceful mw in
@@ -688,7 +688,7 @@ let () =
       in
       if peaceful_mw <> [] then 0. else until_next_activity
     in
-    Connections.refresh_poll_status ~only_if:is_peaceful cons spec_fds ;
+    Connections.refresh_poll_status cons spec_fds ;
     let rset, wset, _ =
       try Poll.poll_select cons.poll_status timeout
       with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])

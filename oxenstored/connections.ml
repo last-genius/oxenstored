@@ -54,8 +54,7 @@ let add_anonymous cons fd =
   let capacity = get_capacity () in
   let xbcon = Xenbus.Xb.open_fd fd ~capacity in
   let con = Connection.create xbcon None in
-  Hashtbl.replace cons.anonymous (Xenbus.Xb.get_fd xbcon)
-    (con, Array.length cons.poll_status) ;
+  Hashtbl.replace cons.anonymous fd (con, Array.length cons.poll_status) ;
   cons.poll_status <- Array.append cons.poll_status [|default_poll_status ()|]
 
 let add_domain cons dom =
@@ -69,7 +68,7 @@ let add_domain cons dom =
   Hashtbl.replace cons.domains (Domain.get_id dom) con ;
   Hashtbl.replace cons.ports (Domain.get_local_port dom) con
 
-let refresh_poll_status ?(only_if = fun _ -> true) cons spec_fds =
+let refresh_poll_status cons spec_fds =
   (* special fds are always read=true, but get overwritten by select_stubs, so we
      need to reset the event we are polling for *)
   List.iteri
@@ -77,13 +76,12 @@ let refresh_poll_status ?(only_if = fun _ -> true) cons spec_fds =
     spec_fds ;
   Hashtbl.iter
     (fun _ (con, index) ->
-      let only = only_if con in
       let fd = Connection.get_fd con in
       let open Poll in
       let event =
         {
-          read= only && Connection.can_input con
-        ; write= only && Connection.has_output con
+          read= Connection.can_input con
+        ; write= Connection.has_output con
         ; except= false
         }
       in

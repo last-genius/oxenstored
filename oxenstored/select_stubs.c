@@ -44,9 +44,6 @@ stub_select_on_poll (value fd_events, value timeo)
                           Bool_val (Field (events, 0)) ? POLLIN : 0;
                   c_fds[i].events |=
                           Bool_val (Field (events, 1)) ? POLLOUT : 0;
-                  c_fds[i].events |=
-                          Bool_val (Field (events, 2)) ? POLLPRI : 0;
-
           };
 
         caml_enter_blocking_section ();
@@ -66,19 +63,16 @@ stub_select_on_poll (value fd_events, value timeo)
 
                             if (c_fds[i].revents & POLLNVAL)
                                     unix_error (EBADF, "select", Nothing);
-                            Field (events, 0) =
+                            Field (events, 2) =
                                     Val_bool (c_fds[i].events & POLLIN
                                               && c_fds[i].revents & (POLLIN |
                                                                      POLLHUP |
                                                                      POLLERR));
-                            Field (events, 1) =
+                            Field (events, 3) =
                                     Val_bool (c_fds[i].events & POLLOUT
                                               && c_fds[i].revents & (POLLOUT |
                                                                      POLLHUP |
                                                                      POLLERR));
-                            Field (events, 2) =
-                                    Val_bool (c_fds[i].revents & POLLPRI);
-
                     }
 
           }

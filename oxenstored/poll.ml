@@ -12,12 +12,20 @@
  * GNU Lesser General Public License for more details.
  *)
 
-(* The [read], [write], [except] are fields mapped to the POLLIN/OUT/PRI
+(* The [read], [write] are fields mapped to the POLLIN/OUT
    subscription flags used by poll, which have a correspondence to the
-   readfds, writefds, exceptfds concept as in select. *)
-type event = {mutable read: bool; mutable write: bool; mutable except: bool}
+   readfds, writefds concept as in select.
+   [can_read], [can_write] correspond to the same flags in [revents]
+*)
+type event = {
+    mutable read: bool
+  ; mutable write: bool
+  ; mutable can_read: bool
+  ; mutable can_write: bool
+}
 
-let init_event () = {read= false; write= false; except= false}
+let init_event () =
+  {read= false; write= false; can_read= false; can_write= false}
 
 external select_on_poll : (Unix.file_descr * event) array -> int -> int
   = "stub_select_on_poll"
@@ -35,15 +43,14 @@ let get_sys_fs_nr_open () =
 
 let poll_select fdarr timeout =
   let n = select_on_poll fdarr (int_of_float (timeout *. 1000.)) in
-  let r = ([], [], []) in
+  let r = ([], []) in
   if n = 0 then
     r
   else
     Array.fold_right
-      (fun (fd, event) (r, w, x) ->
-        ( (if event.read then fd :: r else r)
-        , (if event.write then fd :: w else w)
-        , if event.except then fd :: x else x
+      (fun (fd, event) (r, w) ->
+        ( (if event.can_read then fd :: r else r)
+        , if event.can_write then fd :: w else w
         )
       )
       fdarr r

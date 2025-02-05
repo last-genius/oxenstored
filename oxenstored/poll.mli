@@ -12,11 +12,16 @@
  * GNU Lesser General Public License for more details.
  *)
 
-type event = {mutable read: bool; mutable write: bool; mutable except: bool}
+type event = {
+    mutable read: bool
+  ; mutable write: bool
+  ; mutable can_read: bool
+  ; mutable can_write: bool
+}
 
 val init_event : unit -> event
 
 val poll_select :
      (Unix.file_descr * event) array
   -> float
-  -> Unix.file_descr list * Unix.file_descr list * Unix.file_descr list
+  -> Unix.file_descr list * Unix.file_descr list

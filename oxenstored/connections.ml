@@ -48,7 +48,8 @@ let get_capacity () =
 
 let default_poll_status () = (Unix.stdin, Poll.init_event ())
 
-let spec_poll_status () = Poll.{read= true; write= false; except= false}
+let spec_poll_status () =
+  Poll.{read= true; write= false; can_read= false; can_write= false}
 
 let add_anonymous cons fd =
   let capacity = get_capacity () in

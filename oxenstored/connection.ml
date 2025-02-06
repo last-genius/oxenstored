@@ -125,6 +125,9 @@ and t = {
            directory calls, we should keep the cache inbetween the transactions
            as well.
         *)
+  ; poll_status: Poll.event option
+        (* Connection's poll status. Only [Some Poll.event] when [dom = None],
+           i.e. a connection is 'anonymous', otherwise it's [None] *)
   ; mutable next_tid: int
   ; watches: (string, watch list) Hashtbl.t
   ; mutable nb_watches: int
@@ -237,6 +240,19 @@ let create xbcon dom =
     | None ->
         Some (Hashtbl.create 8)
   in
+  (* Initially, the write queues are empty, so we can't write, but our ability
+     to read is technically determined by the limits and capacity set.
+     Only set poll status for anonymous connections *)
+  let poll_status =
+    let read = Xenbus.Xb.can_input xbcon in
+    (* && BoundedPipe.is_empty pending_source_watchevents is always true on
+       creation, no need to check *)
+    match dom with
+    | Some _ ->
+        None
+    | None ->
+        Some Poll.{read; write= false; can_read= false; can_write= false}
+  in
   let con =
     {
       xb= xbcon
@@ -247,6 +263,7 @@ let create xbcon dom =
         (* Start the generation count with 1, since 0 is a special
            NULL value in CXenstored *)
     ; directory_cache
+    ; poll_status
     ; next_tid= initial_next_tid
     ; watches= Hashtbl.create 8
     ; nb_watches= 0

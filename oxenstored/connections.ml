@@ -23,6 +23,7 @@ type t = {
     anonymous: (Unix.file_descr, Connection.t * int) Hashtbl.t
         (* (fd -> Connection.t, index) where index maps to the poll_status array *)
   ; mutable poll_status: (Unix.file_descr * Poll.event) array
+        (* Poll.event points to immutable con.poll_status, whose fields are mutable *)
   ; domains: (int, Connection.t) Hashtbl.t
   ; ports: (Xeneventchn.t, Connection.t) Hashtbl.t
   ; mutable watches: Connection.watch list Trie.t
@@ -56,7 +57,9 @@ let add_anonymous cons fd =
   let xbcon = Xenbus.Xb.open_fd fd ~capacity in
   let con = Connection.create xbcon None in
   Hashtbl.replace cons.anonymous fd (con, Array.length cons.poll_status) ;
-  cons.poll_status <- Array.append cons.poll_status [|default_poll_status ()|]
+  (* SAFETY: con.poll_status is always Some for anonymous connections *)
+  cons.poll_status <-
+    Array.append cons.poll_status [|(fd, Option.get con.poll_status)|]
 
 let add_domain cons dom =
   let capacity = get_capacity () in
@@ -122,7 +125,8 @@ let del_anonymous cons con spec_fds =
     cons.poll_status <-
       Array.make
         (Hashtbl.length cons.anonymous + List.length spec_fds)
-        (default_poll_status ()) ;
+        (default_poll_status ())
+    (* TODO: Work around an unnecessary allocation here *) ;
 
     (* Keep the special fds at the beginning *)
     let i =
@@ -138,6 +142,9 @@ let del_anonymous cons con spec_fds =
       Hashtbl.fold
         (fun key (con, _) i ->
           Hashtbl.replace cons.anonymous key (con, i) ;
+          (* SAFETY: con.poll_status is always Some for anonymous connections *)
+          cons.poll_status.(i) <-
+            (Connection.get_fd con, Option.get con.poll_status) ;
           i + 1
         )
         cons.anonymous i

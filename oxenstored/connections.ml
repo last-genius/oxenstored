@@ -72,27 +72,6 @@ let add_domain cons dom =
   Hashtbl.replace cons.domains (Domain.get_id dom) con ;
   Hashtbl.replace cons.ports (Domain.get_local_port dom) con
 
-let refresh_poll_status cons spec_fds =
-  (* special fds are always read=true, but get overwritten by select_stubs, so we
-     need to reset the event we are polling for *)
-  List.iteri
-    (fun index fd -> cons.poll_status.(index) <- (fd, spec_poll_status ()))
-    spec_fds ;
-  Hashtbl.iter
-    (fun _ (con, index) ->
-      let fd = Connection.get_fd con in
-      let open Poll in
-      let event =
-        {
-          read= Connection.can_input con
-        ; write= Connection.has_output con
-        ; except= false
-        }
-      in
-      cons.poll_status.(index) <- (fd, event)
-    )
-    cons.anonymous
-
 let find cons fd =
   let c, _ = Hashtbl.find cons.anonymous fd in
   c

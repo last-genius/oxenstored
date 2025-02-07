@@ -688,7 +688,6 @@ let () =
       in
       if peaceful_mw <> [] then 0. else until_next_activity
     in
-    Connections.refresh_poll_status cons spec_fds ;
     let rset, wset =
       try Poll.poll_select cons.poll_status timeout
       with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [])

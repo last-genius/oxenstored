@@ -49,9 +49,8 @@ module BoundedPipe : sig
 
   val push : 'a t -> 'a bounded_sender
   (** [push t item] tries to [flush_pipe] and then push [item]
-      	    into the pipe if its [capacity] allows.
-      	    Returns [None] if there is no more room
-      	 *)
+      into the pipe if its [capacity] allows.
+      Returns [None] if there is no more room *)
 end = struct
   (* items are enqueued in [q], and then flushed to [connect_to] *)
   type 'a t = {q: 'a Queue.t; destination: 'a bounded_sender; capacity: int}
@@ -73,12 +72,12 @@ end = struct
 
   let push t item =
     (* first try to flush as many items from this pipe as possible to make room,
-       		   it is important to do this first to preserve the order of the items
+       it is important to do this first to preserve the order of the items
     *)
     flush_pipe t ;
     if Queue.length t.q < t.capacity then (
       (* enqueue, instead of sending directly.
-         			   this ensures that [out] sees the items in the same order as we receive them
+         this ensures that [out] sees the items in the same order as we receive them
       *)
       Queue.push item t.q ;
       Some (flush_pipe t)
@@ -137,6 +136,33 @@ and t = {
   ; pending_source_watchevents: (watch * Xenbus.Xb.Packet.t) BoundedPipe.t
 }
 
+let update_poll_status_on_push con poll_status =
+  (* event-based poll status needs to be updated only if it's currently
+     the opposite of what a push (call to Xb.queue) can make it.
+
+     So, if we couldn't write before, and the write queue became non-empty,
+     set poll_status.write <- true.
+     If we could read before, but the queue's capacity got filled up,
+     set poll_status.read <- false. *)
+  if (not poll_status.Poll.write) && Xenbus.Xb.output_len con.xb > 0 then
+    poll_status.Poll.write <- true ;
+  if poll_status.Poll.read && not (Xenbus.Xb.can_input con.xb) then
+    poll_status.Poll.read <- false
+
+let update_poll_status_on_pop con is_partial_empty poll_status =
+  (* event-based poll status needs to be updated only if it's currently
+     the opposite of what a pop (call to Xb.output) can make it.
+
+     If we could write but now both partial and packet queues are empty,
+     set poll_status.write <- false
+     If we couldn't read before, but a pop freed up the queues,
+     set poll_status.read <- true *)
+  let no_more_writes = is_partial_empty && Xenbus.Xb.output_len con.xb = 0 in
+  if poll_status.Poll.write && no_more_writes then
+    poll_status.Poll.write <- false ;
+  if (not poll_status.Poll.read) && Xenbus.Xb.can_input con.xb then
+    poll_status.Poll.read <- true
+
 module Watch = struct
   module T = struct
     type t = watch
@@ -155,13 +181,26 @@ module Watch = struct
 
   let flush_events t =
     BoundedPipe.flush_pipe t.pending_watchevents ;
+    Option.iter (update_poll_status_on_push t.con) t.con.poll_status ;
     not (BoundedPipe.is_empty t.pending_watchevents)
 
   let pending_watchevents t = BoundedPipe.length t.pending_watchevents
 end
 
 let source_flush_watchevents t =
-  BoundedPipe.flush_pipe t.pending_source_watchevents
+  BoundedPipe.flush_pipe t.pending_source_watchevents ;
+  (* pending_source_watchevents is possibly empty now, check if
+     poll_status.read should be set to true *)
+  Option.iter
+    (fun poll_status ->
+      if
+        (not poll_status.Poll.read)
+        && BoundedPipe.is_empty t.pending_source_watchevents
+        && Xenbus.Xb.can_input t.xb
+      then
+        poll_status.Poll.read <- true
+    )
+    t.poll_status
 
 let source_pending_watchevents t =
   BoundedPipe.length t.pending_source_watchevents
@@ -197,6 +236,8 @@ let watch_create ~con ~path ~token =
   ; pending_watchevents=
       BoundedPipe.create ~capacity:!Define.maxwatchevents
         ~destination:(Xenbus.Xb.queue con.xb)
+      (* NOTE: Every piece of code that interacts with this pipe needs to update
+         poll_status accordingly *)
   }
 
 let get_con w = w.con
@@ -220,7 +261,9 @@ let make_perm dom =
 
 let create xbcon dom =
   let destination (watch, pkt) =
-    BoundedPipe.push watch.pending_watchevents pkt
+    let r = BoundedPipe.push watch.pending_watchevents pkt in
+    Option.iter (update_poll_status_on_push watch.con) watch.con.poll_status ;
+    r
   in
   let id =
     match dom with
@@ -271,12 +314,12 @@ let create xbcon dom =
     ; stat_nb_ops= 0
     ; perm= make_perm dom
     ; (* the actual capacity will be lower, this is used as an overflow
-         	   buffer: anything that doesn't fit elsewhere gets put here, only
-         	   limited by the amount of watches that you can generate with a
-         	   single xenstore command (which is finite, although possibly very
-         	   large in theory for Dom0).  Once the pipe here has any contents the
-         	   domain is blocked from sending more commands until it is empty
-         	   again though.
+         buffer: anything that doesn't fit elsewhere gets put here, only
+         limited by the amount of watches that you can generate with a
+         single xenstore command (which is finite, although possibly very
+         large in theory for Dom0).  Once the pipe here has any contents the
+         domain is blocked from sending more commands until it is empty
+         again though.
       *)
       pending_source_watchevents=
         BoundedPipe.create ~capacity:Sys.max_array_length ~destination
@@ -308,6 +351,9 @@ let packet_of _con tid rid ty data =
 
 let send_reply con tid rid ty data =
   let result = Xenbus.Xb.queue con.xb (packet_of con tid rid ty data) in
+
+  Option.iter (update_poll_status_on_push con) con.poll_status ;
+
   (* should never happen: we only process an input packet when there is room for an output packet *)
   (* and the limit for replies is different from the limit for watch events *)
   assert (result <> None)
@@ -413,10 +459,17 @@ let fire_single_watch_unchecked source watch =
 
   match BoundedPipe.push source.pending_source_watchevents (watch, pkt) with
   | Some () ->
+      (* pending_source_watchevents is no longer empty,
+         set poll_status.read <- false *)
+      Option.iter
+        (fun poll_status ->
+          if poll_status.Poll.read then poll_status.Poll.read <- false
+        )
+        watch.con.poll_status ;
       () (* packet queued *)
   | None ->
       (* a well behaved Dom0 shouldn't be able to trigger this,
-         			   if it happens it is likely a Dom0 bug causing runaway memory usage
+         if it happens it is likely a Dom0 bug causing runaway memory usage
       *)
       failwith "watch event overflow, cannot happen"
 
@@ -508,7 +561,10 @@ let has_new_output con = Xenbus.Xb.has_new_output con.xb
 
 let peek_output con = Xenbus.Xb.peek_output con.xb
 
-let do_output con = Xenbus.Xb.output con.xb
+let do_output con =
+  let is_partial_empty = Xenbus.Xb.output con.xb in
+  Option.iter (update_poll_status_on_pop con is_partial_empty) con.poll_status ;
+  is_partial_empty
 
 let is_bad con =
   match con.dom with None -> false | Some dom -> Domain.is_bad_domain dom

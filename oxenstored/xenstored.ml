@@ -710,6 +710,7 @@ let () =
     process_domains store cons domains
   in
 
+  Systemd.sd_notify_ready () ;
   let live_update = ref false in
   while not (!quit && Connections.prevents_quit cons = []) do
     try

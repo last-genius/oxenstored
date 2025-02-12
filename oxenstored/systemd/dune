@@ -1,0 +1,8 @@
+(library
+ (foreign_stubs (language c) (names systemd_stubs)
+                (include_dirs include)
+                (flags :standard -DHAVE_SYSTEMD))
+ (modules systemd)
+ (name systemd)
+ (wrapped false)
+ (no_dynlink))

@@ -10,6 +10,7 @@ depends: [
   "dune" {>= "3.15"}
   "dune-site"
   "ounit2"
+  "crowbar"
   "odoc" {with-doc}
 ]
 build: [

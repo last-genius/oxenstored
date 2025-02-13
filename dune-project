@@ -27,6 +27,6 @@
 (package
  (name oxenstored)
  (synopsis "Oxenstored")
- (depends dune-site ounit2)
+ (depends dune-site ounit2 crowbar)
  (sites
   (lib plugins)))

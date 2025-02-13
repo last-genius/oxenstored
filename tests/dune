@@ -1,0 +1,13 @@
+(copy_files# ../oxenstored/*.ml{,i})
+
+(test
+ (modes native)
+ (ocamlopt_flags -afl-instrument)
+ (name xenstored_test)
+ (modules (:standard \ syslog))
+ (package oxenstored)
+ (flags (:standard -w -52))
+ ;;(action (run %{test} -v --seed 364172147))
+ (libraries unix crowbar syslog dynlink
+            xengnt xenbus xen-evtchn xen-evtchn-unix-minimal
+            xsd_glue systemd xenmmap))

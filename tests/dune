@@ -1,0 +1,25 @@
+(copy_files# ../oxenstored/*.ml{,i})
+(copy_files# ../ocaml-evtchn/lib/eventchn_stubs.c)
+
+(library
+ (name evtchn_mock)
+ (modules eventchn)
+ (wrapped false))
+
+(library
+ (name evtchn_unix_mock)
+ (modules Unix_activations_minimal)
+ (foreign_stubs (language c) (names eventchn_stubs))
+ (c_library_flags -L/usr/lib/xen-4.2/lib -lxenctrl)
+ (libraries evtchn_mock)
+ (wrapped false))
+
+(test
+ (modes native)
+ (name unit_tests)
+ (modules (:standard \ syslog unix_activations_minimal eventchn))
+ (package oxenstored)
+ (libraries unix syslog alcotest fmt
+            systemd xengnt xenbus xenmmap
+            evtchn_mock evtchn_unix_mock
+            xsd_glue dynlink dune-site dune-site.plugins))

@@ -9,7 +9,7 @@ bug-reports: "https://github.com/xapi-project/oxenstored/issues"
 depends: [
   "dune" {>= "3.15"}
   "dune-site"
-  "ounit2"
+  "alcotest" {with-test}
   "odoc" {with-doc}
 ]
 build: [

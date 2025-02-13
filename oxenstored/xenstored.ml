@@ -403,9 +403,9 @@ end
 let tweak_gc () =
   Gc.set {(Gc.get ()) with Gc.max_overhead= !Define.gc_max_overhead}
 
-let () =
+let main () =
   Printexc.set_uncaught_exception_handler Logging.fallback_exception_handler ;
-  let cf = do_argv in
+  let cf = do_argv () in
   if cf.config_test then (
     let path = config_filename cf in
     let _pidfile : string = parse_config ~strict:true path in

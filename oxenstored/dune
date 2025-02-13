@@ -1,10 +1,10 @@
 (executable
  (modes native)
- (name xenstored)
+ (name xenstored_main)
  (modules
   (:standard \ syslog configure))
  (libraries unix xenbus xen-evtchn xen-evtchn-unix-minimal
-            xengnt xenmmap syslog xsd_glue systemd
+            xengnt xenmmap syslog xsd_glue systemd testing_status
             dune-site dune-site.plugins))
 
 (generate_sites_module
@@ -15,7 +15,7 @@
  (package oxenstored)
  (section sbin)
  (files
-  (xenstored.exe as oxenstored)))
+  (xenstored_main.exe as oxenstored)))
 
 (executable
   (modules configure)

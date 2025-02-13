@@ -35,14 +35,17 @@ let load_plug fname =
     fail_with "Plugin file '%s' does not exist" fname
 
 let () =
-  let plugins_dir = Paths.libexec ^ "/ocaml/xsd_glue/xenctrl_plugin/" in
-  let filepath = plugins_dir ^ "domain_getinfo_v1.cmxs" in
-  debug "Trying to load plugin '%s'\n%!" filepath ;
-  let list_files = Sys.readdir plugins_dir in
-  debug "Directory listing of '%s'\n%!" plugins_dir ;
-  Array.iter (fun x -> debug "\t%s\n%!" x) list_files ;
-  Dynlink.allow_only ["Plugin_interface_v1"] ;
-  load_plug filepath
+  (* Do not link with the plugin when being tested *)
+  if not Testing_status.under_testing then (
+    let plugins_dir = Paths.libexec ^ "/ocaml/xsd_glue/xenctrl_plugin/" in
+    let filepath = plugins_dir ^ "domain_getinfo_v1.cmxs" in
+    debug "Trying to load plugin '%s'\n%!" filepath ;
+    let list_files = Sys.readdir plugins_dir in
+    debug "Directory listing of '%s'\n%!" plugins_dir ;
+    Array.iter (fun x -> debug "\t%s\n%!" x) list_files ;
+    Dynlink.allow_only ["Plugin_interface_v1"] ;
+    load_plug filepath
+  )
 
 module Plugin =
   ( val Plugin_interface_v1.get_plugin_v1 ()

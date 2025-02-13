@@ -332,7 +332,7 @@ let get_fd con = Xenbus.Xb.get_fd con.xb
 
 let close con =
   Logging.end_connection ~tid:Transaction.none ~con:(get_domstr con) ;
-  Xenbus.Xb.close con.xb
+  Xenbus.Xb.close ~under_testing:Testing_status.under_testing con.xb
 
 let get_perm con = con.perm
 

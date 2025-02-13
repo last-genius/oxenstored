@@ -27,6 +27,8 @@
 (package
  (name oxenstored)
  (synopsis "Oxenstored")
- (depends dune-site ounit2)
+ (depends
+  dune-site
+  (alcotest :with-test))
  (sites
   (lib plugins)))

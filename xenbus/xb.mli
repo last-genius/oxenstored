@@ -116,9 +116,10 @@ val newcon : capacity:capacity -> backend -> t
 
 val open_fd : Unix.file_descr -> capacity:capacity -> t
 
-val open_mmap : Xenmmap.t -> (unit -> unit) -> capacity:capacity -> t
+val open_mmap :
+  Xenmmap.t -> (unit -> unit) -> under_testing:bool -> capacity:capacity -> t
 
-val close : t -> unit
+val close : t -> under_testing:bool -> unit
 
 val is_fd : t -> bool
 

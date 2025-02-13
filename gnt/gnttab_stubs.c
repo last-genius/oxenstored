@@ -18,6 +18,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
+#include <unistd.h>
 
 /* For PROT_READ | PROT_WRITE */
 #include <sys/mman.h>
@@ -53,6 +55,16 @@ stub_gnttab_interface_open (void)
         _G (result) = xgh;
 
         CAMLreturn (result);
+}
+
+/* Only called in tests, returns a unit that poses as any particular type on
+ * OCaml side - kind of like an unsafe cast from nullptr */
+CAMLprim value
+unsafe_stub (value unit)
+{
+        CAMLparam1 (unit);
+        assert (geteuid () != 0);
+        CAMLreturn (Val_unit);
 }
 
 CAMLprim value

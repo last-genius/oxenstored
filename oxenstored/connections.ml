@@ -97,39 +97,50 @@ let del_watches cons (con : Connection.t) =
       )
   )
 
-let del_anonymous cons con spec_fds =
+(* Reallocate the poll_status array, update indices pointing to it *)
+let resize_anonymous cons spec_fds =
+  cons.poll_status <-
+    Array.make
+      (Hashtbl.length cons.anonymous + List.length spec_fds)
+      (default_poll_status ())
+  (* TODO: Work around an unnecessary allocation here *) ;
+
+  (* Keep the special fds at the beginning *)
+  let i =
+    List.fold_left
+      (fun index fd ->
+        cons.poll_status.(index) <- (fd, spec_poll_status ()) ;
+        index + 1
+      )
+      0 spec_fds
+  in
+
+  let _ =
+    Hashtbl.fold
+      (fun key (con, _) i ->
+        Hashtbl.replace cons.anonymous key (con, i) ;
+        (* SAFETY: con.poll_status is always Some for anonymous connections *)
+        cons.poll_status.(i) <-
+          (Connection.get_fd con, Option.get con.poll_status) ;
+        i + 1
+      )
+      cons.anonymous i
+  in
+  ()
+
+(* SAFETY: If del_anonymous is called with resize=false, then resize_anonymous
+   must be called to shrink the array to avoid runaway memory usage *)
+let del_anonymous ?(resize = true) cons con spec_fds =
   try
     Hashtbl.remove cons.anonymous (Connection.get_fd con) ;
-    (* Reallocate the poll_status array, update indices pointing to it *)
-    cons.poll_status <-
-      Array.make
-        (Hashtbl.length cons.anonymous + List.length spec_fds)
-        (default_poll_status ())
-    (* TODO: Work around an unnecessary allocation here *) ;
+    del_watches cons con ;
+    Connection.close con ;
 
-    (* Keep the special fds at the beginning *)
-    let i =
-      List.fold_left
-        (fun index fd ->
-          cons.poll_status.(index) <- (fd, spec_poll_status ()) ;
-          index + 1
-        )
-        0 spec_fds
-    in
-
-    let _ =
-      Hashtbl.fold
-        (fun key (con, _) i ->
-          Hashtbl.replace cons.anonymous key (con, i) ;
-          (* SAFETY: con.poll_status is always Some for anonymous connections *)
-          cons.poll_status.(i) <-
-            (Connection.get_fd con, Option.get con.poll_status) ;
-          i + 1
-        )
-        cons.anonymous i
-    in
-
-    del_watches cons con ; Connection.close con
+    (* Several connections can be removed one after another. There is no point
+       in resizing the array after each one. Wait for the last one, then resize.
+       cons.anonymous Hashtbl is still correct without resizing *)
+    if resize then
+      resize_anonymous cons spec_fds
   with exn -> debug "del anonymous %s" (Printexc.to_string exn)
 
 let del_domain cons id =

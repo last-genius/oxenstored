@@ -18,11 +18,19 @@ module Op = struct include Op end
 
 module Packet = struct include Packet end
 
+type packet_class = CommandReply | Watchevent
+
 module BoundedQueue : sig
   type ('a, 'b) t
 
-  val create :
-    capacity:int -> classify:('a -> 'b) -> limit:('b -> int) -> ('a, 'b) t
+  type limit = {command_reply_limit: int; watch_event_limit: int}
+
+  type class_count = {
+      mutable command_reply_count: int
+    ; mutable watch_event_count: int
+  }
+
+  val create : capacity:int -> classify:('a -> 'b) -> limit:limit -> ('a, 'b) t
   (** [create ~capacity ~classify ~limit] creates a queue with maximum [capacity] elements.
       	    This is burst capacity, each element is further classified according to [classify],
       	    and each class can have its own [limit].
@@ -34,30 +42,37 @@ module BoundedQueue : sig
   val clear : ('a, 'b) t -> unit
   (** [clear q] discards all elements from [q] *)
 
-  val can_push : ('a, 'b) t -> 'b -> bool
+  val can_push : ('a, packet_class) t -> packet_class -> bool
   (** [can_push q] when [length q < capacity].	*)
 
-  val push : 'a -> ('a, 'b) t -> unit option
+  val push : 'a -> ('a, packet_class) t -> unit option
   (** [push e q] adds [e] at the end of queue [q] if [can_push q], or returns [None]. *)
 
-  val pop : ('a, 'b) t -> 'a
+  val pop : ('a, packet_class) t -> 'a
   (** [pop q] removes and returns first element in [q], or raises [Queue.Empty]. *)
 
-  val peek : ('a, 'b) t -> 'a
+  val peek : ('a, packet_class) t -> 'a
   (** [peek q] returns the first element in [q], or raises [Queue.Empty].  *)
 
-  val length : ('a, 'b) t -> int
+  val length : ('a, packet_class) t -> int
   (** [length q] returns the current number of elements in [q] *)
 
-  val debug : ('b -> string) -> (_, 'b) t -> string
+  val debug : (packet_class -> string) -> (_, packet_class) t -> string
   (** [debug string_of_class q] prints queue usage statistics in an unspecified internal format. *)
 end = struct
+  type limit = {command_reply_limit: int; watch_event_limit: int}
+
+  type class_count = {
+      mutable command_reply_count: int
+    ; mutable watch_event_count: int
+  }
+
   type ('a, 'b) t = {
       q: 'a Queue.t
     ; capacity: int
     ; classify: 'a -> 'b
-    ; limit: 'b -> int
-    ; class_count: ('b, int) Hashtbl.t
+    ; limit: limit
+    ; class_count: class_count
   }
 
   let create ~capacity ~classify ~limit =
@@ -66,14 +81,32 @@ end = struct
     ; q= Queue.create ()
     ; classify
     ; limit
-    ; class_count= Hashtbl.create 3
+    ; class_count= {command_reply_count= 0; watch_event_count= 0}
     }
 
+  let set_count t classification v =
+    match classification with
+    | CommandReply ->
+        t.class_count.command_reply_count <- v
+    | Watchevent ->
+        t.class_count.watch_event_count <- v
+
   let get_count t classification =
-    try Hashtbl.find t.class_count classification with Not_found -> 0
+    match classification with
+    | CommandReply ->
+        t.class_count.command_reply_count
+    | Watchevent ->
+        t.class_count.watch_event_count
 
   let can_push_internal t classification class_count =
-    Queue.length t.q < t.capacity && class_count < t.limit classification
+    let limit =
+      match classification with
+      | CommandReply ->
+          t.limit.command_reply_limit
+      | Watchevent ->
+          t.limit.watch_event_limit
+    in
+    Queue.length t.q < t.capacity && class_count < limit
 
   let ok = Some ()
 
@@ -82,7 +115,7 @@ end = struct
     let class_count = get_count t classification in
     if can_push_internal t classification class_count then (
       Queue.push e t.q ;
-      Hashtbl.replace t.class_count classification (class_count + 1) ;
+      set_count t classification (class_count + 1) ;
       ok
     ) else
       None
@@ -91,19 +124,12 @@ end = struct
     can_push_internal t classification @@ get_count t classification
 
   let clear t =
-    Queue.clear t.q ;
-    Hashtbl.reset t.class_count
+    Queue.clear t.q ; set_count t Watchevent 0 ; set_count t CommandReply 0
 
   let pop t =
     let e = Queue.pop t.q in
     let classification = t.classify e in
-    let () =
-      match get_count t classification - 1 with
-      | 0 ->
-          Hashtbl.remove t.class_count classification (* reduces memusage *)
-      | n ->
-          Hashtbl.replace t.class_count classification n
-    in
+    set_count t classification (get_count t classification - 1) ;
     e
 
   let peek t = Queue.peek t.q
@@ -113,11 +139,12 @@ end = struct
   let debug string_of_class t =
     let b = Buffer.create 128 in
     Printf.bprintf b "BoundedQueue capacity: %d, used: {" t.capacity ;
-    Hashtbl.iter
-      (fun packet_class count ->
-        Printf.bprintf b "\t%s: %d" (string_of_class packet_class) count
-      )
-      t.class_count ;
+    Printf.bprintf b "\t%s: %d"
+      (string_of_class Watchevent)
+      t.class_count.watch_event_count ;
+    Printf.bprintf b "\t%s: %d"
+      (string_of_class CommandReply)
+      t.class_count.command_reply_count ;
     Printf.bprintf b "}" ;
     Buffer.contents b
 end
@@ -154,8 +181,6 @@ type partial_buf = HaveHdr of Partial.pkt | NoHdr of int * bytes
 type capacity = {maxoutstanding: int; maxwatchevents: int}
 
 module Queue = BoundedQueue
-
-type packet_class = CommandReply | Watchevent
 
 let string_of_packet_class = function
   | CommandReply ->
@@ -306,11 +331,12 @@ let classify t =
   match t.Packet.ty with Op.Watchevent -> Watchevent | _ -> CommandReply
 
 let newcon ~capacity backend =
-  let limit = function
-    | CommandReply ->
-        capacity.maxoutstanding
-    | Watchevent ->
-        capacity.maxwatchevents
+  let limit =
+    Queue.
+      {
+        command_reply_limit= capacity.maxoutstanding
+      ; watch_event_limit= capacity.maxwatchevents
+      }
   in
   {
     backend

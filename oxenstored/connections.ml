@@ -23,6 +23,7 @@ type t = {
     anonymous: (Unix.file_descr, Connection.t * int) Hashtbl.t
         (* (fd -> Connection.t, index) where index maps to the poll_status array *)
   ; mutable poll_status: (Unix.file_descr * Poll.event) array
+        (* Poll.event points to immutable con.poll_status, whose fields are mutable *)
   ; domains: (int, Connection.t) Hashtbl.t
   ; ports: (Xeneventchn.t, Connection.t) Hashtbl.t
   ; mutable watches: Connection.watch list Trie.t
@@ -48,15 +49,17 @@ let get_capacity () =
 
 let default_poll_status () = (Unix.stdin, Poll.init_event ())
 
-let spec_poll_status () = Poll.{read= true; write= false; except= false}
+let spec_poll_status () =
+  Poll.{read= true; write= false; can_read= false; can_write= false}
 
 let add_anonymous cons fd =
   let capacity = get_capacity () in
   let xbcon = Xenbus.Xb.open_fd fd ~capacity in
   let con = Connection.create xbcon None in
-  Hashtbl.replace cons.anonymous (Xenbus.Xb.get_fd xbcon)
-    (con, Array.length cons.poll_status) ;
-  cons.poll_status <- Array.append cons.poll_status [|default_poll_status ()|]
+  Hashtbl.replace cons.anonymous fd (con, Array.length cons.poll_status) ;
+  (* SAFETY: con.poll_status is always Some for anonymous connections *)
+  cons.poll_status <-
+    Array.append cons.poll_status [|(fd, Option.get con.poll_status)|]
 
 let add_domain cons dom =
   let capacity = get_capacity () in
@@ -68,28 +71,6 @@ let add_domain cons dom =
   let con = Connection.create xbcon (Some dom) in
   Hashtbl.replace cons.domains (Domain.get_id dom) con ;
   Hashtbl.replace cons.ports (Domain.get_local_port dom) con
-
-let refresh_poll_status ?(only_if = fun _ -> true) cons spec_fds =
-  (* special fds are always read=true, but get overwritten by select_stubs, so we
-     need to reset the event we are polling for *)
-  List.iteri
-    (fun index fd -> cons.poll_status.(index) <- (fd, spec_poll_status ()))
-    spec_fds ;
-  Hashtbl.iter
-    (fun _ (con, index) ->
-      let only = only_if con in
-      let fd = Connection.get_fd con in
-      let open Poll in
-      let event =
-        {
-          read= only && Connection.can_input con
-        ; write= only && Connection.has_output con
-        ; except= false
-        }
-      in
-      cons.poll_status.(index) <- (fd, event)
-    )
-    cons.anonymous
 
 let find cons fd =
   let c, _ = Hashtbl.find cons.anonymous fd in
@@ -106,13 +87,15 @@ let del_watches_of_con con watches =
   | ws ->
       Some ws
 
-let del_watches cons con =
-  Connection.del_watches con ;
-  cons.watches <- Trie.map (del_watches_of_con con) cons.watches ;
-  cons.has_pending_watchevents <-
-    (cons.has_pending_watchevents
-    |> Connection.Watch.Set.filter @@ fun w -> Connection.get_con w != con
-    )
+let del_watches cons (con : Connection.t) =
+  if con.nb_watches > 0 then (
+    Connection.del_watches con ;
+    cons.watches <- Trie.map (del_watches_of_con con) cons.watches ;
+    cons.has_pending_watchevents <-
+      (cons.has_pending_watchevents
+      |> Connection.Watch.Set.filter @@ fun w -> Connection.get_con w != con
+      )
+  )
 
 let del_anonymous cons con spec_fds =
   try
@@ -121,7 +104,8 @@ let del_anonymous cons con spec_fds =
     cons.poll_status <-
       Array.make
         (Hashtbl.length cons.anonymous + List.length spec_fds)
-        (default_poll_status ()) ;
+        (default_poll_status ())
+    (* TODO: Work around an unnecessary allocation here *) ;
 
     (* Keep the special fds at the beginning *)
     let i =
@@ -137,6 +121,9 @@ let del_anonymous cons con spec_fds =
       Hashtbl.fold
         (fun key (con, _) i ->
           Hashtbl.replace cons.anonymous key (con, i) ;
+          (* SAFETY: con.poll_status is always Some for anonymous connections *)
+          cons.poll_status.(i) <-
+            (Connection.get_fd con, Option.get con.poll_status) ;
           i + 1
         )
         cons.anonymous i

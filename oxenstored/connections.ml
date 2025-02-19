@@ -27,7 +27,6 @@ type t = {
   ; domains: (int, Connection.t) Hashtbl.t
   ; ports: (Xeneventchn.t, Connection.t) Hashtbl.t
   ; mutable watches: Connection.watch list Trie.t
-  ; mutable has_pending_watchevents: Connection.Watch.Set.t
 }
 
 let create () =
@@ -37,7 +36,6 @@ let create () =
   ; domains= Hashtbl.create 37
   ; ports= Hashtbl.create 37
   ; watches= Trie.create ()
-  ; has_pending_watchevents= Connection.Watch.Set.empty
   }
 
 let get_capacity () =
@@ -90,11 +88,7 @@ let del_watches_of_con con watches =
 let del_watches cons (con : Connection.t) =
   if con.nb_watches > 0 then (
     Connection.del_watches con ;
-    cons.watches <- Trie.map (del_watches_of_con con) cons.watches ;
-    cons.has_pending_watchevents <-
-      (cons.has_pending_watchevents
-      |> Connection.Watch.Set.filter @@ fun w -> Connection.get_con w != con
-      )
+    cons.watches <- Trie.map (del_watches_of_con con) cons.watches
   )
 
 (* Reallocate the poll_status array, update indices pointing to it *)
@@ -221,11 +215,7 @@ let fire_watches ?oldroot source root cons path recurse =
   if recurse then
     Trie.iter fire_rec (Trie.sub cons.watches key)
 
-let send_watchevents cons con =
-  cons.has_pending_watchevents <-
-    cons.has_pending_watchevents
-    |> Connection.Watch.Set.filter Connection.Watch.flush_events ;
-  Connection.source_flush_watchevents con
+let send_watchevents con = Connection.source_flush_watchevents con
 
 let fire_spec_watches root cons specpath =
   let source = find_domain cons 0 in
@@ -279,25 +269,6 @@ let debug cons =
       cons.domains []
   in
   String.concat "" (domains @ anonymous)
-
-let debug_watchevents cons con =
-  (* == (physical equality)
-     	   has to be used here because w.con.xb.backend might contain a [unit->unit] value causing regular
-     	   comparison to fail due to having a 'functional value' which cannot be compared.
-  *)
-  let s =
-    cons.has_pending_watchevents
-    |> Connection.Watch.Set.filter (fun w -> w.con == con)
-  in
-  let pending =
-    s
-    |> Connection.Watch.Set.elements
-    |> List.map (fun w -> Connection.Watch.pending_watchevents w)
-    |> List.fold_left ( + ) 0
-  in
-  Printf.sprintf "Watches with pending events: %d, pending events total: %d"
-    (Connection.Watch.Set.cardinal s)
-    pending
 
 let filter ~f cons =
   let fold _ v acc = if f v then v :: acc else acc in

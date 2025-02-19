@@ -89,6 +89,11 @@ let del_watches cons (con : Connection.t) =
   if con.nb_watches > 0 then (
     Connection.del_watches con ;
     cons.watches <- Trie.map (del_watches_of_con con) cons.watches
+    (* OPTIMIZATION NOTE: Instead of iterating over all watches, one could
+       iterate over the deleted connection's watches instead, find them in
+       the trie and remove them. Some benchmarking has shown that this leads to
+       worse performance, however. This might need re-evaluation if the number of
+       watches expected in a representative workload increases, however *)
   )
 
 (* Reallocate the poll_status array, update indices pointing to it *)

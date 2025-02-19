@@ -27,6 +27,9 @@ type t = {
   ; domains: (int, Connection.t) Hashtbl.t
   ; ports: (Xeneventchn.t, Connection.t) Hashtbl.t
   ; mutable watches: Connection.watch list Trie.t
+        (* OPTIMIZATION NOTE: list here could be turned into a Set of watches, but
+           benchmarking has shown this doesn't improve performance for a reasonable
+           number of watches *)
 }
 
 let create () =

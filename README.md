@@ -49,6 +49,9 @@ make check
 
 # Format code
 make format
+
+# Run tests
+make test
 ```
 
 ## Using
@@ -104,3 +107,5 @@ The full list of commands is available in [process.ml](https://github.com/xapi-p
 ## Known incompatibilities with C Xenstore
 
 * chmod for dead domains will work with O, but not with C
+* Oxenstored does not preserve the order of nodes added to a directory
+  (see `_test_directory_order` in [`unit_tests.ml`](./tests/unit_tests.ml))

@@ -304,6 +304,223 @@ let test_transactions_really_do_conflict () =
     ; (dom0, none, (Read, ["/a/b"]), (Read, ["hello\000"]))
     ]
 
+let assert_watches c expected =
+  Alcotest.(check' (list @@ pair string string))
+    ~msg:"Check connection's watches are as expected"
+    ~actual:(Connection.list_watches c)
+    ~expected
+
+let check_for_watchevent (con : Connection.t) path token =
+  let actual = Xenbus.Xb.unsafe_pop_output con.xb in
+  check_result actual (Watchevent, [path; token])
+
+let check_no_watchevents (con : Connection.t) =
+  Alcotest.(check' int)
+    ~msg:"Verifying queue is empty, without any watchevents"
+    ~actual:(Xenbus.Xb.output_len con.xb)
+    ~expected:0
+
+(* Check that writes generate watches and reads do not *)
+let test_simple_watches () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  let dom1 = create_domU_conn cons doms 1 in
+
+  (* No watch events are generated without registering *)
+  run store cons doms
+    [
+      (dom0, none, (Mkdir, ["/a"]), (Mkdir, ["OK"]))
+    ; (dom0, none, (Setperms, ["/a"; "b0"]), (Setperms, ["OK"]))
+    ] ;
+  assert_watches dom0 [] ;
+
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  run store cons doms [(dom0, none, (Watch, ["/a"; "token"]), (Watch, ["OK"]))] ;
+  assert_watches dom0 [("/a", "token")] ;
+  check_for_watchevent dom0 "/a" "token" ;
+
+  (* dom0 can see its own write via watches *)
+  run store cons doms [(dom0, none, (Write, ["/a"; "foo"]), (Write, ["OK"]))] ;
+  check_for_watchevent dom0 "/a" "token" ;
+
+  (* dom0 can see dom1's writes via watches *)
+  run store cons doms [(dom1, none, (Write, ["/a"; "foo"]), (Write, ["OK"]))] ;
+  check_for_watchevent dom0 "/a" "token" ;
+
+  (* reads don't generate watches *)
+  run store cons doms
+    [
+      (dom0, none, (Read, ["/a"]), (Read, ["foo\000"]))
+    ; (dom0, none, (Read, ["/a/1"]), (Error, ["ENOENT"]))
+    ; (dom1, none, (Read, ["/a"]), (Read, ["foo\000"]))
+    ; (dom1, none, (Read, ["/a/1"]), (Error, ["ENOENT"]))
+    ]
+
+(* Check watches on relative paths *)
+let test_relative_watches () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  (* No watch events are generated without registering *)
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/0/name"; ""]), (Write, ["OK"]))
+    ; (dom0, none, (Write, ["/local/domain/0/device"; ""]), (Write, ["OK"]))
+    ; (dom0, none, (Watch, ["device"; "token"]), (Watch, ["OK"]))
+    ] ;
+  assert_watches dom0 [("device", "token")] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom0 "device" "token" ;
+
+  (* dom0 should see the absolute write on a relative path watch *)
+  run store cons doms
+    [
+      ( dom0
+      , none
+      , (Write, ["/local/domain/0/device/vbd"; "hello"])
+      , (Write, ["OK"])
+      )
+    ] ;
+  check_for_watchevent dom0 "device/vbd" "token" ;
+  assert_watches dom0 [("device", "token")]
+
+(* Check that a connection only receives a watch if it
+   can read the node that was modified. *)
+let test_watches_read_perm () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  let dom1 = create_domU_conn cons doms 1 in
+
+  run store cons doms [(dom1, none, (Watch, ["/a"; "token"]), (Watch, ["OK"]))] ;
+  assert_watches dom1 [("/a", "token")] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom1 "/a" "token" ;
+
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/a"; "hello"]), (Write, ["OK"]))
+    ; (dom1, none, (Read, ["/a"]), (Error, ["EACCES"]))
+    ] ;
+  assert_watches dom1 [("/a", "token")] ;
+  check_no_watchevents dom1
+
+(* Check that watches only appear on transaction commit
+   and not at all in the case of abort *)
+let test_transaction_watches () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  run store cons doms [(dom0, none, (Watch, ["/a"; "token"]), (Watch, ["OK"]))] ;
+  assert_watches dom0 [("/a", "token")] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom0 "/a" "token" ;
+
+  (* Writes in a transaction don't generate watches immediately *)
+  let tid = start_transaction store cons doms dom0 in
+  run store cons doms [(dom0, tid, (Write, ["/a"; "hello"]), (Write, ["OK"]))] ;
+  check_no_watchevents dom0 ;
+
+  (* If the transaction is aborted then no watches are generated *)
+  run store cons doms
+    [(dom0, tid, (Transaction_end, ["F"]), (Transaction_end, ["OK"]))] ;
+  check_no_watchevents dom0 ;
+
+  (* If the transaction successfully commits then the watches appear *)
+  let tid = start_transaction store cons doms dom0 in
+  run store cons doms
+    [
+      (dom0, tid, (Write, ["/a"; "hello"]), (Write, ["OK"]))
+    ; (* Watchevent is pushed to the queue first, then Transaction_end *)
+      (dom0, tid, (Transaction_end, ["T"]), (Watchevent, ["/a"; "token"]))
+    ] ;
+  let actual = Xenbus.Xb.unsafe_pop_output dom0.xb in
+  check_result actual (Transaction_end, ["OK"])
+
+(* Check that @introduceDomain and @releaseDomain watches appear on respective calls *)
+let test_introduce_release_watches () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+
+  run store cons doms
+    [(dom0, none, (Watch, ["@introduceDomain"; "token"]), (Watch, ["OK"]))] ;
+  assert_watches dom0 [("@introduceDomain", "token")] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom0 "@introduceDomain" "token" ;
+
+  run store cons doms
+    [(dom0, none, (Watch, ["@releaseDomain"; "token"]), (Watch, ["OK"]))] ;
+  assert_watches dom0
+    [("@releaseDomain", "token"); ("@introduceDomain", "token")] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom0 "@releaseDomain" "token" ;
+
+  (* Watchevent is pushed to the queue first, then Introduce *)
+  run store cons doms
+    [
+      ( dom0
+      , none
+      , (Introduce, ["5"; "5"; "5"])
+      , (Watchevent, ["@introduceDomain"; "token"])
+      )
+    ] ;
+  let actual = Xenbus.Xb.unsafe_pop_output dom0.xb in
+  check_result actual (Introduce, ["OK"]) ;
+
+  (* Watchevent is pushed to the queue first, then Release *)
+  run store cons doms
+    [(dom0, none, (Release, ["5"]), (Watchevent, ["@releaseDomain"; "token"]))] ;
+  let actual = Xenbus.Xb.unsafe_pop_output dom0.xb in
+  check_result actual (Release, ["OK"])
+
+(* Check that rm generates recursive watches *)
+let test_recursive_rm_watch () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+
+  run store cons doms
+    [
+      (dom0, none, (Mkdir, ["/a/b/c/d"]), (Mkdir, ["OK"]))
+    ; (dom0, none, (Write, ["/a/b/y/z"; "hello"]), (Write, ["OK"]))
+    ; (dom0, none, (Watch, ["/a/b/c"; "token"]), (Watch, ["OK"]))
+    ] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom0 "/a/b/c" "token" ;
+  assert_watches dom0 [("/a/b/c", "token")] ;
+
+  run store cons doms
+    [(dom0, none, (Watch, ["/a/b/y/z"; "token"]), (Watch, ["OK"]))] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom0 "/a/b/y/z" "token" ;
+  assert_watches dom0 [("/a/b/c", "token"); ("/a/b/y/z", "token")] ;
+
+  (* Check that removing a parent node triggers watches recursively
+     down into the children *)
+  run store cons doms [(dom0, none, (Rm, ["/a"]), (Rm, ["OK"]))] ;
+  check_for_watchevent dom0 "/a/b/c" "token" ;
+  check_for_watchevent dom0 "/a/b/y/z" "token"
+
+(* Check that a write failure doesn't generate a watch *)
+let test_no_watch_on_error () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  let dom1 = create_domU_conn cons doms 1 in
+  run store cons doms
+    [
+      (dom0, none, (Mkdir, ["/a"]), (Mkdir, ["OK"]))
+    ; (dom0, none, (Watch, ["/a"; "token"]), (Watch, ["OK"]))
+    ] ;
+  (* One Watchevent is fired immediately after adding the watch unconditionally *)
+  check_for_watchevent dom0 "/a" "token" ;
+
+  run store cons doms
+    [(dom1, none, (Write, ["/a/b/y/z"; "hello"]), (Error, ["EACCES"]))] ;
+  check_no_watchevents dom0 ;
+
+  run store cons doms
+    [
+      (dom0, none, (Setperms, ["/a"; "r1"]), (Setperms, ["OK"]))
+    ; (dom1, none, (Write, ["/a/b/y/z"; "hello"]), (Write, ["OK"]))
+    ] ;
+  check_for_watchevent dom0 "/a" "token"
+
 let () =
   Alcotest.run "Test RRD library"
     [
@@ -330,6 +547,20 @@ let () =
           , `Quick
           , test_transactions_really_do_conflict
           )
+        ]
+      )
+    ; ( "Watches tests"
+      , [
+          ("test_simple_watches", `Quick, test_simple_watches)
+        ; ("test_relative_watches", `Quick, test_relative_watches)
+        ; ("test_watches_read_perm", `Quick, test_watches_read_perm)
+        ; ("test_transaction_watches", `Quick, test_transaction_watches)
+        ; ( "test_introduce_release_watches"
+          , `Quick
+          , test_introduce_release_watches
+          )
+        ; ("test_recursive_rm_watch", `Quick, test_recursive_rm_watch)
+        ; ("test_no_watch_on_error", `Quick, test_no_watch_on_error)
         ]
       )
     ]

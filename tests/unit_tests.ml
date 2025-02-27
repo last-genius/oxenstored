@@ -195,6 +195,115 @@ let test_set_target () =
     ; (dom7, none, (Write, ["/foo"; "bar"]), (Write, ["OK"]))
     ]
 
+(* Check that other connections cannot see the nodes created
+   within an uncommitted transaction *)
+let test_transactions_are_isolated () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  let tid = start_transaction store cons doms dom0 in
+  run store cons doms
+    [
+      (dom0, tid, (Write, ["/foo"; "bar"]), (Write, ["OK"]))
+    ; (dom0, none, (Read, ["/foo"]), (Error, ["ENOENT"]))
+    ; (dom0, tid, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; (dom0, none, (Read, ["/foo"]), (Read, ["bar\000"]))
+    ]
+
+(* Check that two parallel, unrelated transactions can be
+   coalesced properly *)
+let test_independent_transactions_coalesce () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  run store cons doms
+    [
+      (dom0, none, (Mkdir, ["/a/b"]), (Mkdir, ["OK"]))
+    ; (dom0, none, (Mkdir, ["/1/2"]), (Mkdir, ["OK"]))
+    ] ;
+  let tid_1 = start_transaction store cons doms dom0 in
+  let tid_2 = start_transaction store cons doms dom0 in
+  run store cons doms
+    [
+      (dom0, tid_1, (Write, ["/a/b"; "foo"]), (Write, ["OK"]))
+    ; (dom0, tid_2, (Write, ["/1/2"; "foo"]), (Write, ["OK"]))
+    ; (dom0, tid_1, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; (dom0, tid_2, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; (dom0, none, (Read, ["/a/b"]), (Read, ["foo\000"]))
+    ; (dom0, none, (Read, ["/1/2"]), (Read, ["foo\000"]))
+    ]
+
+(* Check that two parallel, device-creating transactions can coalesce *)
+let test_device_create_coalesce () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  run store cons doms
+    [
+      (dom0, none, (Mkdir, ["/local/domain/0/backend/vbd"]), (Mkdir, ["OK"]))
+    ; (dom0, none, (Mkdir, ["/local/domain/1/device/vbd"]), (Mkdir, ["OK"]))
+    ; (dom0, none, (Mkdir, ["/local/domain/2/device/vbd"]), (Mkdir, ["OK"]))
+    ] ;
+  let tid_1 = start_transaction store cons doms dom0 in
+  let tid_2 = start_transaction store cons doms dom0 in
+  run store cons doms
+    [
+      ( dom0
+      , tid_1
+      , (Write, ["/local/domain/0/backend/vbd/1/51712"; "hello"])
+      , (Write, ["OK"])
+      )
+    ; ( dom0
+      , tid_1
+      , (Write, ["/local/domain/1/device/vbd/51712"; "there"])
+      , (Write, ["OK"])
+      )
+    ; ( dom0
+      , tid_2
+      , (Write, ["/local/domain/0/backend/vbd/2/51712"; "hello"])
+      , (Write, ["OK"])
+      )
+    ; ( dom0
+      , tid_2
+      , (Write, ["/local/domain/2/device/vbd/51712"; "there"])
+      , (Write, ["OK"])
+      )
+    ; (dom0, tid_1, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; (dom0, tid_2, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; ( dom0
+      , none
+      , (Read, ["/local/domain/0/backend/vbd/1/51712"])
+      , (Read, ["hello\000"])
+      )
+    ; ( dom0
+      , none
+      , (Read, ["/local/domain/1/device/vbd/51712"])
+      , (Read, ["there\000"])
+      )
+    ; ( dom0
+      , none
+      , (Read, ["/local/domain/0/backend/vbd/2/51712"])
+      , (Read, ["hello\000"])
+      )
+    ; ( dom0
+      , none
+      , (Read, ["/local/domain/2/device/vbd/51712"])
+      , (Read, ["there\000"])
+      )
+    ]
+
+(* Check that transactions that really can't interleave are aborted *)
+let test_transactions_really_do_conflict () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  run store cons doms [(dom0, none, (Mkdir, ["/a"]), (Mkdir, ["OK"]))] ;
+  let tid = start_transaction store cons doms dom0 in
+  run store cons doms
+    [
+      (dom0, tid, (Directory, ["/a"]), (Directory, [""]))
+    ; (dom0, none, (Write, ["/a/b"; "hello"]), (Write, ["OK"]))
+    ; (dom0, tid, (Write, ["/a/b"; "there"]), (Write, ["OK"]))
+    ; (dom0, tid, (Transaction_end, ["T"]), (Error, ["EAGAIN"]))
+    ; (dom0, none, (Read, ["/a/b"]), (Read, ["hello\000"]))
+    ]
+
 let () =
   Alcotest.run "Test RRD library"
     [
@@ -207,6 +316,20 @@ let () =
         ; ("test_empty", `Quick, test_empty)
         ; ("test_rm", `Quick, test_rm)
         ; ("test_set_target", `Quick, test_set_target)
+        ]
+      )
+    ; ( "Transaction tests"
+      , [
+          ("transactions_are_isolated", `Quick, test_transactions_are_isolated)
+        ; ( "independent_transactions_coalesce"
+          , `Quick
+          , test_independent_transactions_coalesce
+          )
+        ; ("device_create_coalesce", `Quick, test_device_create_coalesce)
+        ; ( "test_transactions_really_do_conflict"
+          , `Quick
+          , test_transactions_really_do_conflict
+          )
         ]
       )
     ]

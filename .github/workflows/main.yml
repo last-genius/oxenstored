@@ -30,5 +30,8 @@ jobs:
       - name: Check all code
         run: opam exec -- make check
 
+      - name: Run tests
+        run: opam exec -- make test
+
       - name: Trim dune cache
         run: opam exec -- dune cache trim --size=2GiB

@@ -381,6 +381,11 @@ let has_output con = has_new_output con || has_old_output con
 
 let peek_output con = Queue.peek con.pkt_out
 
+let unsafe_pop_output con =
+  (* Only call when being tested *)
+  assert (Unix.geteuid () != 0) ;
+  Queue.pop con.pkt_out
+
 let has_partial_input con =
   match con.partial_in with
   | HaveHdr _ ->

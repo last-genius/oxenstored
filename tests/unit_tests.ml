@@ -521,6 +521,153 @@ let test_no_watch_on_error () =
     ] ;
   check_for_watchevent dom0 "/a" "token"
 
+(* TODO: Cxenstored has a more complex quota system, with controllable limits
+   for watches, number of permissions, etc. Oxenstored does not, so some of the quota
+   tests from the Mirage ocaml-xenstore repo do not apply to us. Yet *)
+
+let check_quota_ent_per_domain store ~domid expected =
+  let get_current_entries_quota store domid =
+    Quota.find_or_zero store.Store.quota.cur domid
+  in
+  Alcotest.(check' int)
+    ~msg:"Verify quota usage is as expected"
+    ~actual:(get_current_entries_quota store domid)
+    ~expected
+
+(* Check that node creation and destruction changes a quota *)
+let test_quota () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+
+  run store cons doms [(dom0, none, (Write, ["/a"; "hello"]), (Write, ["OK"]))] ;
+  check_quota_ent_per_domain store ~domid:0 1 ;
+
+  (* Implicit creation of 2 elements *)
+  run store cons doms
+    [(dom0, none, (Write, ["/a/b/c"; "hello"]), (Write, ["OK"]))] ;
+  check_quota_ent_per_domain store ~domid:0 3 ;
+
+  (* Remove one element *)
+  run store cons doms [(dom0, none, (Rm, ["/a/b/c"]), (Rm, ["OK"]))] ;
+  check_quota_ent_per_domain store ~domid:0 2 ;
+
+  (* Recursive remove of 2 elements *)
+  run store cons doms [(dom0, none, (Rm, ["/a"]), (Rm, ["OK"]))] ;
+  check_quota_ent_per_domain store ~domid:0 0 ;
+
+  (* Remove an already removed element *)
+  run store cons doms [(dom0, none, (Rm, ["/a"]), (Rm, ["OK"]))] ;
+  check_quota_ent_per_domain store ~domid:0 0
+
+(* Check that node creation and destruction in a transaction changes a quota *)
+let test_quota_transaction () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  let dom1 = create_domU_conn cons doms 1 in
+  let dom2 = create_domU_conn cons doms 2 in
+
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/1"; ""]), (Write, ["OK"]))
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/1"; "r1"; "w2"; "b3"])
+      , (Setperms, ["OK"])
+      )
+    ; (dom0, none, (Write, ["/local/domain/2"; ""]), (Write, ["OK"]))
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/2"; "r2"; "w2"; "b3"])
+      , (Setperms, ["OK"])
+      )
+    ; (dom1, none, (Write, ["/local/domain/1/data/test"; ""]), (Write, ["OK"]))
+    ] ;
+  check_quota_ent_per_domain store ~domid:1 3 ;
+
+  run store cons doms
+    [
+      ( dom1
+      , none
+      , (Write, ["/local/domain/1/data/test/node0"; "node0"])
+      , (Write, ["OK"])
+      )
+    ] ;
+  check_quota_ent_per_domain store ~domid:1 4 ;
+
+  run store cons doms
+    [(dom2, none, (Write, ["/local/domain/2/data/test"; ""]), (Write, ["OK"]))] ;
+  check_quota_ent_per_domain store ~domid:2 3 ;
+
+  let tid_1 = start_transaction store cons doms dom1 in
+  let tid_2 = start_transaction store cons doms dom2 in
+  run store cons doms
+    [
+      (dom1, tid_1, (Rm, ["/local/domain/1/data/test"]), (Rm, ["OK"]))
+    ; ( dom2
+      , tid_2
+      , (Write, ["/local/domain/2/data/test/node0"; "node0"])
+      , (Write, ["OK"])
+      )
+    ] ;
+
+  (* Transactions have not yet been committed *)
+  check_quota_ent_per_domain store ~domid:1 4 ;
+  check_quota_ent_per_domain store ~domid:2 3 ;
+
+  (* Transactions committed, nodes removed and added *)
+  run store cons doms
+    [
+      (dom1, tid_1, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; (dom2, tid_2, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ] ;
+  check_quota_ent_per_domain store ~domid:1 2 ;
+  check_quota_ent_per_domain store ~domid:2 4
+
+(* Check that string length quota is checked correctly *)
+let test_quota_maxsize () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+
+  (* Length check includes the null byte *)
+  store.quota <- {store.quota with maxsize= 6} ;
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/a"; "hello"]), (Write, ["OK"]))
+    ; (dom0, none, (Write, ["/a"; "hello2"]), (Error, ["E2BIG"]))
+    ] ;
+
+  store.quota <- {store.quota with maxsize= 7} ;
+
+  run store cons doms [(dom0, none, (Write, ["/a"; "hello2"]), (Write, ["OK"]))]
+
+(* Check that number of nodes per domain quota is checked correctly *)
+let test_quota_maxent () =
+  let store, doms, cons = initialize () in
+  (* Quota for dom0 is ignored, so test for DomU *)
+  let dom0 = create_dom0_conn cons doms in
+  let dom1 = create_domU_conn cons doms 1 in
+
+  store.quota <- {store.quota with maxent= 2} ;
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/1"; ""]), (Write, ["OK"]))
+    ; (dom0, none, (Setperms, ["/local/domain/1"; "r1"]), (Setperms, ["OK"]))
+    ] ;
+
+  run store cons doms
+    [
+      (dom1, none, (Write, ["first"; "post"]), (Write, ["OK"]))
+    ; (dom1, none, (Write, ["a"; "hello"]), (Error, ["EQUOTA"]))
+    ] ;
+
+  store.quota <- {store.quota with maxent= 3} ;
+  run store cons doms
+    [
+      (dom1, none, (Write, ["a"; "hello"]), (Write, ["OK"]))
+    ; (dom1, none, (Write, ["a"; "there"]), (Write, ["OK"]))
+    ; (dom1, none, (Write, ["b"; "hello"]), (Error, ["EQUOTA"]))
+    ]
+
 let () =
   Alcotest.run "Test RRD library"
     [
@@ -561,6 +708,14 @@ let () =
           )
         ; ("test_recursive_rm_watch", `Quick, test_recursive_rm_watch)
         ; ("test_no_watch_on_error", `Quick, test_no_watch_on_error)
+        ]
+      )
+    ; ( "Quota tests"
+      , [
+          ("test_quota", `Quick, test_quota)
+        ; ("test_quota_transaction", `Quick, test_quota_transaction)
+        ; ("test_quota_maxsize", `Quick, test_quota_maxsize)
+        ; ("test_quota_maxent", `Quick, test_quota_maxent)
         ]
       )
     ]

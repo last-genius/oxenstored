@@ -895,6 +895,65 @@ let test_quota_transaction () =
   check_quota_ent_per_domain store ~domid:1 2 ;
   check_quota_ent_per_domain store ~domid:2 4
 
+let test_quota_transaction_overflow () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  let dom1 = create_domU_conn cons doms 1 in
+
+  store.quota <- {store.quota with maxent= 3} ;
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/1/attr/x"; ""]), (Write, ["OK"]))
+    ; (dom0, none, (Write, ["/local/domain/1/attr/y"; ""]), (Write, ["OK"]))
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/1/attr/x"; "r1"])
+      , (Setperms, ["OK"])
+      )
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/1/attr/y"; "r1"])
+      , (Setperms, ["OK"])
+      )
+    ] ;
+  check_quota_ent_per_domain store ~domid:1 2 ;
+
+  (* dom1 should only be able to create one more node now *)
+
+  (* Creating two nodes in one transaction fails with EQUOTA during the transaction *)
+  let tid_0 = start_transaction store cons doms dom1 in
+  run store cons doms
+    [
+      (dom1, tid_0, (Write, ["/local/domain/1/attr/x/1"; ""]), (Write, ["OK"]))
+    ; ( dom1
+      , tid_0
+      , (Write, ["/local/domain/1/attr/y/1"; ""])
+      , (Error, ["EQUOTA"])
+      )
+    ] ;
+
+  (* Two transactions create a node each - writes need to be coalescable *)
+  let tid_1 = start_transaction store cons doms dom1 in
+  let tid_2 = start_transaction store cons doms dom1 in
+  run store cons doms
+    [
+      (dom1, tid_1, (Write, ["/local/domain/1/attr/x/1"; ""]), (Write, ["OK"]))
+    ; (dom1, tid_2, (Write, ["/local/domain/1/attr/y/1"; ""]), (Write, ["OK"]))
+    ] ;
+
+  (* Both transactions return OK, but EQUOTA is generated during transaction
+     replay and nodes are not created over the limit *)
+  run store cons doms
+    [
+      (dom1, tid_1, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; (dom1, tid_2, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ] ;
+  run store cons doms
+    [
+      (dom1, tid_0, (Read, ["/local/domain/1/attr/x/1"]), (Read, ["\000"]))
+    ; (dom1, tid_0, (Read, ["/local/domain/1/attr/y/1"]), (Error, ["ENOENT"]))
+    ]
+
 (* Check that string length quota is checked correctly *)
 let test_quota_maxsize () =
   let store, doms, cons = initialize () in
@@ -1033,6 +1092,10 @@ let () =
       , [
           ("test_quota", `Quick, test_quota)
         ; ("test_quota_transaction", `Quick, test_quota_transaction)
+        ; ( "test_quota_transaction_overflow"
+          , `Quick
+          , test_quota_transaction_overflow
+          )
         ; ("test_quota_maxsize", `Quick, test_quota_maxsize)
         ; ("test_quota_maxent", `Quick, test_quota_maxent)
         ]

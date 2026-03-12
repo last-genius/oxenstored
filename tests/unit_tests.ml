@@ -367,7 +367,20 @@ let test_simple_watches () =
     ; (dom0, none, (Read, ["/a/1"]), (Error, ["ENOENT"]))
     ; (dom1, none, (Read, ["/a"]), (Read, ["foo\000"]))
     ; (dom1, none, (Read, ["/a/1"]), (Error, ["ENOENT"]))
-    ]
+    ] ;
+
+  (* Unwatch returns an error on a nonexistent path/token,
+     removes the watch otherwise.
+     Different connection can't touch other's watches. *)
+  run store cons doms
+    [
+      (dom0, none, (Unwatch, ["/b"; "token"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["/a"; "wrongtoken"]), (Error, ["ENOENT"]))
+    ; (dom1, none, (Unwatch, ["/a"; "token"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["/a"; "token"]), (Unwatch, ["OK"]))
+    ; (dom0, none, (Unwatch, ["/a"; "token"]), (Error, ["ENOENT"]))
+    ] ;
+  assert_watches dom0 []
 
 (* Check watches on relative paths *)
 let test_relative_watches () =
@@ -394,7 +407,18 @@ let test_relative_watches () =
       )
     ] ;
   check_for_watchevent dom0 "device/vbd" "token" ;
-  assert_watches dom0 [("device", "token", None)]
+  assert_watches dom0 [("device", "token", None)] ;
+
+  (* Unwatch returns an error on a nonexistent path/token,
+     removes the watch otherwise *)
+  run store cons doms
+    [
+      (dom0, none, (Unwatch, ["devices"; "token"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["device"; "wrongtoken"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["device"; "token"]), (Unwatch, ["OK"]))
+    ; (dom0, none, (Unwatch, ["device"; "token"]), (Error, ["ENOENT"]))
+    ] ;
+  assert_watches dom0 []
 
 (* Check that a connection only receives a watch if it
    can read the node that was modified. *)

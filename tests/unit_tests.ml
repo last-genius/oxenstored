@@ -840,6 +840,41 @@ let check_quota_ent_per_domain store ~domid expected =
     ~actual:(get_current_entries_quota store domid)
     ~expected
 
+let test_xsa_483 () =
+  initialize_main_loop () ;
+  let one_loop_iteration, store, cons, doms = Xenstored.main () in
+  let dom0 = Hashtbl.find cons.domains 0 in
+
+  (* Domains > 2000 are considered dead on the first query for test purposes *)
+  let domU = create_domU_conn cons doms 2001 in
+
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/2001"; ""]), (Write, ["OK"]))
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/2001"; "r2001"])
+      , (Setperms, ["OK"])
+      )
+    ] ;
+
+  check_quota_ent_per_domain store ~domid:2001 1 ;
+
+  (* domU adds some nodes to its sub-tree *)
+  run store cons doms
+    [
+      (domU, none, (Write, ["/local/domain/2001/x"; ""]), (Write, ["OK"]))
+    ; (domU, none, (Write, ["/local/domain/2001/y"; ""]), (Write, ["OK"]))
+    ; (domU, none, (Write, ["/local/domain/2001/z"; ""]), (Write, ["OK"]))
+    ] ;
+  check_quota_ent_per_domain store ~domid:2001 4 ;
+
+  (* dom2001 dies, is cleaned up *)
+  one_loop_iteration () ;
+
+  (* Its quota should be reset back to 0 *)
+  check_quota_ent_per_domain store ~domid:2001 0
+
 (* Check that node creation and destruction changes a quota *)
 let test_quota () =
   let store, doms, cons = initialize () in
@@ -1126,6 +1161,7 @@ let () =
     ; ( "Quota tests"
       , [
           ("test_quota", `Quick, test_quota)
+        ; ("test_xsa_483", `Quick, test_xsa_483)
         ; ("test_quota_transaction", `Quick, test_quota_transaction)
         ; ( "test_quota_transaction_overflow"
           , `Quick

@@ -168,6 +168,40 @@ let test_mkdir () =
     ; (dom0, tid, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
     ]
 
+let check_history_length expected =
+  Alcotest.(check' int)
+    ~msg:"Check history length is as expected"
+    ~actual:(List.length !History.history)
+    ~expected
+
+let test_history_trim () =
+  initialize_main_loop () ;
+  let one_loop_iteration, store, cons, doms = Xenstored.main () in
+  let dom0 = Hashtbl.find cons.domains 0 in
+  let dom1 = create_domU_conn cons doms 1 in
+
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/1"; ""]), (Write, ["OK"]))
+    ; (dom0, none, (Setperms, ["/local/domain/1"; "n1"]), (Setperms, ["OK"]))
+    ] ;
+
+  (* Start a long-running transaction *)
+  one_loop_iteration () ;
+  let _tid = start_transaction store cons doms dom1 in
+  Unix.sleepf !Define.conflict_max_history_seconds ;
+
+  for _ = 1 to 100 do
+    run store cons doms
+      [(dom1, none, (Write, ["/local/domain/1/a"; ""]), (Write, ["OK"]))]
+  done ;
+  (* Without running frequent_ops, history list is long *)
+  check_history_length 100 ;
+
+  (* frequent_ops trims history list, removing long-running transactions *)
+  one_loop_iteration () ;
+  check_history_length 0
+
 (* Check that I can read an empty value *)
 let test_empty () =
   let store, doms, cons = initialize () in
@@ -1066,6 +1100,7 @@ let () =
           , `Quick
           , test_transactions_really_do_conflict
           )
+        ; ("test_history_trim", `Quick, test_history_trim)
         ]
       )
     ; ( "Watches tests"

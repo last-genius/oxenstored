@@ -510,7 +510,8 @@ let reset_permissions store domid =
                 (Node.get_name node) ;
             Some {node with Node.perms}
       )
-      store.root
+      store.root ;
+  store.quota <- Quota.del store.quota domid
 
 type ops = {
     store: t

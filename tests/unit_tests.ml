@@ -168,6 +168,40 @@ let test_mkdir () =
     ; (dom0, tid, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
     ]
 
+let check_history_length expected =
+  Alcotest.(check' int)
+    ~msg:"Check history length is as expected"
+    ~actual:(List.length !History.history)
+    ~expected
+
+let test_history_trim () =
+  initialize_main_loop () ;
+  let one_loop_iteration, store, cons, doms = Xenstored.main () in
+  let dom0 = Hashtbl.find cons.domains 0 in
+  let dom1 = create_domU_conn cons doms 1 in
+
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/1"; ""]), (Write, ["OK"]))
+    ; (dom0, none, (Setperms, ["/local/domain/1"; "n1"]), (Setperms, ["OK"]))
+    ] ;
+
+  (* Start a long-running transaction *)
+  one_loop_iteration () ;
+  let _tid = start_transaction store cons doms dom1 in
+  Unix.sleepf !Define.conflict_max_history_seconds ;
+
+  for _ = 1 to 100 do
+    run store cons doms
+      [(dom1, none, (Write, ["/local/domain/1/a"; ""]), (Write, ["OK"]))]
+  done ;
+  (* Without running frequent_ops, history list is long *)
+  check_history_length 100 ;
+
+  (* frequent_ops trims history list, removing long-running transactions *)
+  one_loop_iteration () ;
+  check_history_length 0
+
 (* Check that I can read an empty value *)
 let test_empty () =
   let store, doms, cons = initialize () in
@@ -367,7 +401,20 @@ let test_simple_watches () =
     ; (dom0, none, (Read, ["/a/1"]), (Error, ["ENOENT"]))
     ; (dom1, none, (Read, ["/a"]), (Read, ["foo\000"]))
     ; (dom1, none, (Read, ["/a/1"]), (Error, ["ENOENT"]))
-    ]
+    ] ;
+
+  (* Unwatch returns an error on a nonexistent path/token,
+     removes the watch otherwise.
+     Different connection can't touch other's watches. *)
+  run store cons doms
+    [
+      (dom0, none, (Unwatch, ["/b"; "token"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["/a"; "wrongtoken"]), (Error, ["ENOENT"]))
+    ; (dom1, none, (Unwatch, ["/a"; "token"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["/a"; "token"]), (Unwatch, ["OK"]))
+    ; (dom0, none, (Unwatch, ["/a"; "token"]), (Error, ["ENOENT"]))
+    ] ;
+  assert_watches dom0 []
 
 (* Check watches on relative paths *)
 let test_relative_watches () =
@@ -394,7 +441,18 @@ let test_relative_watches () =
       )
     ] ;
   check_for_watchevent dom0 "device/vbd" "token" ;
-  assert_watches dom0 [("device", "token", None)]
+  assert_watches dom0 [("device", "token", None)] ;
+
+  (* Unwatch returns an error on a nonexistent path/token,
+     removes the watch otherwise *)
+  run store cons doms
+    [
+      (dom0, none, (Unwatch, ["devices"; "token"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["device"; "wrongtoken"]), (Error, ["ENOENT"]))
+    ; (dom0, none, (Unwatch, ["device"; "token"]), (Unwatch, ["OK"]))
+    ; (dom0, none, (Unwatch, ["device"; "token"]), (Error, ["ENOENT"]))
+    ] ;
+  assert_watches dom0 []
 
 (* Check that a connection only receives a watch if it
    can read the node that was modified. *)
@@ -782,6 +840,41 @@ let check_quota_ent_per_domain store ~domid expected =
     ~actual:(get_current_entries_quota store domid)
     ~expected
 
+let test_xsa_483 () =
+  initialize_main_loop () ;
+  let one_loop_iteration, store, cons, doms = Xenstored.main () in
+  let dom0 = Hashtbl.find cons.domains 0 in
+
+  (* Domains > 2000 are considered dead on the first query for test purposes *)
+  let domU = create_domU_conn cons doms 2001 in
+
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/2001"; ""]), (Write, ["OK"]))
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/2001"; "r2001"])
+      , (Setperms, ["OK"])
+      )
+    ] ;
+
+  check_quota_ent_per_domain store ~domid:2001 1 ;
+
+  (* domU adds some nodes to its sub-tree *)
+  run store cons doms
+    [
+      (domU, none, (Write, ["/local/domain/2001/x"; ""]), (Write, ["OK"]))
+    ; (domU, none, (Write, ["/local/domain/2001/y"; ""]), (Write, ["OK"]))
+    ; (domU, none, (Write, ["/local/domain/2001/z"; ""]), (Write, ["OK"]))
+    ] ;
+  check_quota_ent_per_domain store ~domid:2001 4 ;
+
+  (* dom2001 dies, is cleaned up *)
+  one_loop_iteration () ;
+
+  (* Its quota should be reset back to 0 *)
+  check_quota_ent_per_domain store ~domid:2001 0
+
 (* Check that node creation and destruction changes a quota *)
 let test_quota () =
   let store, doms, cons = initialize () in
@@ -870,6 +963,65 @@ let test_quota_transaction () =
     ] ;
   check_quota_ent_per_domain store ~domid:1 2 ;
   check_quota_ent_per_domain store ~domid:2 4
+
+let test_quota_transaction_overflow () =
+  let store, doms, cons = initialize () in
+  let dom0 = create_dom0_conn cons doms in
+  let dom1 = create_domU_conn cons doms 1 in
+
+  store.quota <- {store.quota with maxent= 3} ;
+  run store cons doms
+    [
+      (dom0, none, (Write, ["/local/domain/1/attr/x"; ""]), (Write, ["OK"]))
+    ; (dom0, none, (Write, ["/local/domain/1/attr/y"; ""]), (Write, ["OK"]))
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/1/attr/x"; "r1"])
+      , (Setperms, ["OK"])
+      )
+    ; ( dom0
+      , none
+      , (Setperms, ["/local/domain/1/attr/y"; "r1"])
+      , (Setperms, ["OK"])
+      )
+    ] ;
+  check_quota_ent_per_domain store ~domid:1 2 ;
+
+  (* dom1 should only be able to create one more node now *)
+
+  (* Creating two nodes in one transaction fails with EQUOTA during the transaction *)
+  let tid_0 = start_transaction store cons doms dom1 in
+  run store cons doms
+    [
+      (dom1, tid_0, (Write, ["/local/domain/1/attr/x/1"; ""]), (Write, ["OK"]))
+    ; ( dom1
+      , tid_0
+      , (Write, ["/local/domain/1/attr/y/1"; ""])
+      , (Error, ["EQUOTA"])
+      )
+    ] ;
+
+  (* Two transactions create a node each - writes need to be coalescable *)
+  let tid_1 = start_transaction store cons doms dom1 in
+  let tid_2 = start_transaction store cons doms dom1 in
+  run store cons doms
+    [
+      (dom1, tid_1, (Write, ["/local/domain/1/attr/x/1"; ""]), (Write, ["OK"]))
+    ; (dom1, tid_2, (Write, ["/local/domain/1/attr/y/1"; ""]), (Write, ["OK"]))
+    ] ;
+
+  (* Both transactions return OK, but EQUOTA is generated during transaction
+     replay and nodes are not created over the limit *)
+  run store cons doms
+    [
+      (dom1, tid_1, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ; (dom1, tid_2, (Transaction_end, ["T"]), (Transaction_end, ["OK"]))
+    ] ;
+  run store cons doms
+    [
+      (dom1, tid_0, (Read, ["/local/domain/1/attr/x/1"]), (Read, ["\000"]))
+    ; (dom1, tid_0, (Read, ["/local/domain/1/attr/y/1"]), (Error, ["ENOENT"]))
+    ]
 
 (* Check that string length quota is checked correctly *)
 let test_quota_maxsize () =
@@ -983,6 +1135,7 @@ let () =
           , `Quick
           , test_transactions_really_do_conflict
           )
+        ; ("test_history_trim", `Quick, test_history_trim)
         ]
       )
     ; ( "Watches tests"
@@ -1008,7 +1161,12 @@ let () =
     ; ( "Quota tests"
       , [
           ("test_quota", `Quick, test_quota)
+        ; ("test_xsa_483", `Quick, test_xsa_483)
         ; ("test_quota_transaction", `Quick, test_quota_transaction)
+        ; ( "test_quota_transaction_overflow"
+          , `Quick
+          , test_quota_transaction_overflow
+          )
         ; ("test_quota_maxsize", `Quick, test_quota_maxsize)
         ; ("test_quota_maxent", `Quick, test_quota_maxent)
         ]
